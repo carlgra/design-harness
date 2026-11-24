@@ -64,6 +64,7 @@ func runChecks(repo *design.Repo) *Result {
 		res.fail("the root this repository is nested under: %v", err)
 	}
 	checkIDs(repo.Body, parent, res)
+	checkContracts(repo, LocateEnv(parent), res)
 	if notes, err := readNotes(repo.Root); err != nil {
 		res.fail("%s: %v", ChangesDir, err)
 	} else {
@@ -96,12 +97,7 @@ func checkTests(repo *design.Repo, res *Result) {
 	if len(repo.Design.Tests) == 0 {
 		return
 	}
-	var tests []string
-	for _, f := range repo.Files {
-		if design.IsTestFile(f) && design.Claimed(repo.Design.Files, f) {
-			tests = append(tests, f)
-		}
-	}
+	tests := testFiles(repo)
 	if len(tests) == 0 {
 		res.fail("design/DESIGN.md names %d test(s) but accounts for no test file", len(repo.Design.Tests))
 		return
@@ -115,6 +111,17 @@ func checkTests(repo *design.Repo, res *Result) {
 			res.fail("design/DESIGN.md names the test %s, which is in no test file it accounts for", name)
 		}
 	}
+}
+
+// testFiles are the test files the design accounts for.
+func testFiles(repo *design.Repo) []string {
+	var tests []string
+	for _, f := range repo.Files {
+		if design.IsTestFile(f) && design.Claimed(repo.Design.Files, f) {
+			tests = append(tests, f)
+		}
+	}
+	return tests
 }
 
 // definedIn reports whether name appears as a whole word in any of the files:

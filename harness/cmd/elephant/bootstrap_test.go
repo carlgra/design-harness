@@ -200,7 +200,14 @@ func TestARepositoryUnderARootUsesTheRootsHarnessAndRules(t *testing.T) {
 	run(t, "sh", script, root)
 	rootDoc := filepath.Join(root, "design", "DESIGN.md")
 	b, _ := os.ReadFile(rootDoc)
-	write(rootDoc, strings.Replace(string(b), "# commits: conventional", "commits: conventional", 1))
+	withConvention := strings.Replace(string(b), "# commits: conventional", "commits: conventional", 1)
+	// The root's map: a contracts repository, and the service about to be adopted.
+	theMap := "repos:\n  - path: contracts\n    kind: contracts\n    remote: git@github.com:acme/contracts.git\n  - path: services/billing\n    kind: service\n"
+	write(rootDoc, strings.Replace(withConvention, "\n---\n\n# ", "\n"+theMap+"---\n\n# ", 1))
+	write(filepath.Join(root, "contracts", "README.md"), "# contracts\n")
+	gitIn(t, filepath.Join(root, "contracts"), "init", "-q", "-b", "main")
+	gitIn(t, filepath.Join(root, "contracts"), "add", "-A")
+	gitIn(t, filepath.Join(root, "contracts"), "commit", "-q", "-m", "feat: contracts")
 
 	// A service, checked out inside it.
 	write(filepath.Join(child, "README.md"), "# billing\n")
@@ -243,7 +250,7 @@ func TestARepositoryUnderARootUsesTheRootsHarnessAndRules(t *testing.T) {
 		t.Errorf("the skeleton accounts for a harness the repository does not have:\n%s", doc)
 	}
 	ci := read(".github/workflows/harness.yml")
-	for _, want := range []string{"repository: acme/project", "path: services/billing", "go -C ../../harness run ./cmd/check"} {
+	for _, want := range []string{"repository: acme/project", "path: services/billing", "go -C ../../harness run ./cmd/check", "repository: acme/contracts", "path: contracts\n", "fetch-depth: 0"} {
 		if !strings.Contains(ci, want) {
 			t.Errorf("the CI workflow does not say %q:\n%s", want, ci)
 		}

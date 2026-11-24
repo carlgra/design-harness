@@ -106,6 +106,11 @@ repos:
 
 With the map in place the root's checker refuses a repository on disk that is not on it,
 a nested repository's checker refuses a citation the root's design does not define, and
+a definition is held to having someone who serves it. In `contracts`, a new RPC or
+request field is refused until the change's note lists it in a `servers` block with the
+repository that serves it and the ones that call it. Once it has merged, that
+repository's checker refuses until its design names, under `serves:`, a test for it.
+Also,
 `go -C harness run ./cmd/sync` rebuilds the whole tree on a fresh machine. The root pins
 no commits and uses no submodules. `--standalone` gives a repository under a root a
 harness of its own instead.
@@ -149,8 +154,8 @@ everything else.
   always right about them; everything else is read by a person.
 - It does not let a model gate a merge, or admit anything. The goldfish advises, the
   elephant proposes, a person decides.
-- It does not check that a definition in a contracts repository has a server and a test.
-  The map records which repository holds the contracts; the check is not written.
+- It reads definitions from protobuf only. A contracts repository in another format has
+  its notes held to the `servers` block and nothing scanned.
 - It does not open pull requests anywhere but GitHub; elsewhere, `harness/safe-push
   --no-pr` pushes and you open it yourself.
 - The headless sessions are Claude's command-line tool. The prompts are plain files

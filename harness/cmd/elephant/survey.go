@@ -510,6 +510,34 @@ func (s Survey) Sections() []string {
 	return design.DefaultSections
 }
 
+// IsContracts reports whether this is the contracts repository, the one
+// whose notes list who serves each new definition: by the kind the root's map
+// gives it, or, while the map does not list it, by its name.
+func (s Survey) IsContracts() bool {
+	if s.Parent == nil {
+		return false
+	}
+	for _, e := range s.Parent.Design.Repos {
+		if strings.Trim(e.Path, "/") == s.Parent.Path {
+			return strings.EqualFold(e.Kind, "contracts")
+		}
+	}
+	// Not on the map yet, as when it is adopted before the root lists it:
+	// its name is the best there is, and an empty block costs nothing.
+	return kindOf(s.Parent.Path) == "contracts"
+}
+
+// Contracts is the contracts repository beside this one, as the root's map
+// lists it; nil when there is none or this is it.
+func (s Survey) Contracts() *design.RepoEntry {
+	for i, e := range s.Siblings {
+		if strings.EqualFold(e.Kind, "contracts") && e.Status != "planned" {
+			return &s.Siblings[i]
+		}
+	}
+	return nil
+}
+
 // HarnessPath is the harness as the repository reaches it: its own, or the
 // root's by relative path.
 func (s Survey) HarnessPath() string {
@@ -534,6 +562,9 @@ func (s Survey) AdoptionNote(template string) string {
 		}
 		note = strings.TrimRight(note, "\n") + "\n\n## " + sec + "\n\nNothing: adopting the method adds a design, rules and checks. It changes no behaviour and nothing stored.\n"
 		lower = strings.ToLower(note)
+	}
+	if s.IsContracts() {
+		note = strings.TrimRight(note, "\n") + "\n\n## Servers\n\nAdopting the method adds no definition.\n\n```servers\n[]\n```\n"
 	}
 	return note
 }

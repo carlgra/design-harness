@@ -185,11 +185,25 @@ if [ "$CI" -eq 1 ]; then
   else
     mkdir -p "$T/.github/workflows"
     if [ -n "$ROOT" ]; then
-      fill "$H/templates/harness.nested.yml" > "$T/.github/workflows/harness.yml"
+      # Where the root's map lists a contracts repository, the checker reads
+      # there what this one must serve, so CI checks it out too.
+      WHERE="$(go -C "$H" run ./cmd/elephant where -root "$T" 2>/dev/null || true)"
+      CPATH="$(printf '%s\n' "$WHERE" | sed -n 's/^contracts_path=//p')"
+      CREPO="$(printf '%s\n' "$WHERE" | sed -n 's/^contracts_remote=//p' | sed -n -e 's#\.git$##' -e 's#^.*github\.com[:/]##p')"
+      STEP="$(mktemp)"
+      if [ -n "$CPATH" ] && [ -n "$CREPO" ]; then
+        printf '\n      - name: the contracts repository, beside this one\n        uses: actions/checkout@v4\n        with:\n          repository: %s\n          path: %s\n' "$CREPO" "$CPATH" > "$STEP"
+      fi
+      fill "$H/templates/harness.nested.yml" | awk -v step="$STEP" '
+        /\{\{CONTRACTS_CHECKOUT\}\}/ { while ((getline line < step) > 0) print line; next }
+        { print }' > "$T/.github/workflows/harness.yml"
+      rm -f "$STEP"
+      [ -z "$CPATH" ] || [ -n "$CREPO" ] || CI_NOTE="the root's map lists a contracts repository at $CPATH with no GitHub remote, so the workflow does not check it out and the checker will fail in CI until it does"
     else
       cp "$H/templates/harness.yml" "$T/.github/workflows/harness.yml"
     fi
     did wrote ".github/workflows/harness.yml"
+    [ -z "${CI_NOTE:-}" ] || did note "$CI_NOTE"
   fi
 fi
 

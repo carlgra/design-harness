@@ -304,6 +304,18 @@ func TestANestedRepositoryTakesItsRulesFromTheRoot(t *testing.T) {
 		t.Errorf("the first note does not carry what the root asks of a note:\n%s", note)
 	}
 
+	// The contracts repository's first note says it adds no definition, in
+	// the block its checker reads; a service's first note has no such block.
+	if strings.Contains(note, "```servers") || s.IsContracts() || s.Contracts() == nil || s.Contracts().Path != "contracts" {
+		t.Errorf("a service was taken for the contracts repository, or was not told where it is:\n%s", note)
+	}
+	asContracts := *parent
+	asContracts.Path = "contracts"
+	c := survey(repo, &asContracts, nil, "2026-01-02")
+	if !c.IsContracts() || c.Contracts() != nil || !strings.Contains(c.AdoptionNote("# Adopted\n"), "```servers\n[]\n```") {
+		t.Errorf("the contracts repository's first note does not carry an empty servers block")
+	}
+
 	alone := survey(repo, nil, nil, "2026-01-02")
 	doc = alone.Skeleton(template)
 	if strings.Contains(doc, "nested under") || strings.Contains(doc, "{{") || strings.Contains(alone.Markdown(), "Where this repository sits") {
