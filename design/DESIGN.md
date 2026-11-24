@@ -35,6 +35,7 @@ tests:
   - TestARootsSkeletonCarriesTheMap
   - TestARepositoryUnderARootUsesTheRootsHarnessAndRules
   - TestTheMapIsBroughtInLineWithoutMerging
+  - TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects
 # The repository's own gate, run from the root after the checks pass.
 validate: go -C harness vet ./... && go -C harness test ./...
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
@@ -221,9 +222,13 @@ root's found on disk is not looked up.
 that exists, the CI workflow, then the skeleton and the first note, then installs the
 hooks, and runs the checker. Each of those is skipped when the thing is already there,
 and a `harness/` directory that is not this harness stops it before anything is
-written. `--update` is the one thing that replaces: it swaps a project's `harness/`
-for this one, whole, keeping only the project's two settings files,
-`goldfish/goldfish.yaml` and `elephant/elephant.yaml`. A change a project made to its
+written. `--update` is the one thing that replaces, and it replaces what is the
+harness's: it swaps a project's `harness/` for this one, whole, keeping only the
+project's two settings files, `goldfish/goldfish.yaml` and `elephant/elephant.yaml`;
+and it rewrites the method's rules in `CLAUDE.md`, the lines between their two marks,
+from the current template, leaving every line outside the marks as it was. In a
+repository nested under a root there is no harness to swap, so `--update` there
+rewrites the rules alone, from the root's templates. A change a project made to its
 own copy is lost from the working tree by that and shows in `git diff`, where the
 person updating decides what to keep.
 
@@ -295,9 +300,11 @@ root needs is named in the workflow's comment and set by a person. A root is boo
 - **INV-009** — Adopting with bootstrap overwrites nothing that exists, adding to the
   end of a `CLAUDE.md` that is already there and leaving every line of it as it was,
   and commits nothing; and a project it has run on passes the checker with its own copy of the
-  harness alone, or, adopted under a root, with the root's and no copy (INV-016). With `--update`, and only then, it replaces `harness/`, and nothing
-  else.
-  *(`test: TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`)*
+  harness alone, or, adopted under a root, with the root's and no copy (INV-016). With `--update`, and only then, it replaces what is the harness's:
+  `harness/`, less the project's two settings files, and the method's rules between
+  their marks in `CLAUDE.md`; and nothing else.
+  *(`test: TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`,
+  `test: TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`)*
 - **INV-010** — A design that still says `TODO(elephant)` is reported as unfinished on
   every run of the checker, and is not refused for it. *(`test:
   TestAnUnfinishedDesignIsSaidToBeUnfinished`)*
@@ -340,7 +347,6 @@ that due. None is accepted as final.
 | INV-012 | read at review | a test that fails on any `..` path or absolute path in a script, and on a name from a list of project names | the first slip |
 | contracts | the map records which nested repository is of kind `contracts`, and a drafting session is told the definitions live there; nothing checks that a definition names the repository that serves it, or that the server has a test for it | a check, at the root, that reads the contracts repository's definitions and each serving repository's spine | the first project that keeps its definitions in one format the check can read |
 | INV-016 | a nested repository's CI needs a secret that can read a private root, set by hand | none: it is a setting on the server | not due |
-| the rules in `CLAUDE.md` | written once, at adoption, from the template; `--update` replaces `harness/` and does not touch them, so a rule changed in the template reaches a project only when someone copies it | `--update` rewrites what lies between the method's two marks and nothing outside them | the first change to a rule in the template |
 | `safe-push` | exercised by use; no test walks its refusals | a shell test against a throwaway remote: `main` refused, a stray branch moved, a dirty tree refused, a conflict named | the next change to the script |
 
 ## How a change lands
@@ -632,3 +638,4 @@ Paths a fault would travel, and the test that walks each:
 - a root's skeleton lists every repository found under it — `TestARootsSkeletonCarriesTheMap`
 - a repository under a root is given no second harness, and passes with the root's — `TestARepositoryUnderARootUsesTheRootsHarnessAndRules`
 - a listed repository is cloned or fetched and never merged — `TestTheMapIsBroughtInLineWithoutMerging`
+- an update leaves a project following old rules, or takes something that was the project's — `TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`

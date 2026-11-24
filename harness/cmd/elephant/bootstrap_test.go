@@ -262,3 +262,81 @@ func TestARepositoryUnderARootUsesTheRootsHarnessAndRules(t *testing.T) {
 		t.Errorf("the root does not pass with a repository nested in it:\n%s", out)
 	}
 }
+
+// An update replaces what is the harness's and nothing that is the
+// project's: harness/ and the method's rules between their marks are this
+// harness's again, and the project's settings, its own lines of CLAUDE.md
+// and its own section there are as they were.
+func TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects(t *testing.T) {
+	script, err := filepath.Abs(filepath.Join("..", "..", "..", "bootstrap"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(script); err != nil {
+		t.Skip("no bootstrap beside this harness: it is a copy in a project")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	path := func(name string) string { return filepath.Join(root, filepath.FromSlash(name)) }
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(path(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(path(name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("CLAUDE.md", "# Mine\n\nAlways run make test.\n")
+	gitIn(t, root, "init", "-q", "-b", "main")
+	run(t, "sh", script, root)
+	fresh := read("CLAUDE.md")
+
+	// A year passes: the rules here are an old version's, the project has
+	// written its own section and set its own model, and someone has
+	// changed the harness in place.
+	stale := strings.Replace(fresh, "1. **Design before code.**", "1. **A RULE FROM AN OLD VERSION.**", 1)
+	stale = strings.Replace(stale, "TODO(elephant): how to build", "Build with make. TODO(elephant): how to build", 1)
+	if stale == fresh || !strings.Contains(stale, "Build with make.") {
+		t.Fatalf("the fixture did not change the file:\n%s", fresh)
+	}
+	write("CLAUDE.md", stale+"\n## After\n\nThe project's last word.\n")
+	write("harness/goldfish/goldfish.yaml", "model: the-projects-own\nverdict: \"VERDICT:\"\n")
+	write("harness/FRAMEWORK.md", "# changed in place\n")
+
+	out := run(t, "sh", script, "--update", root)
+	got := read("CLAUDE.md")
+	if strings.Contains(got, "A RULE FROM AN OLD VERSION") || !strings.Contains(got, "1. **Design before code.**") {
+		t.Errorf("the method's rules were not replaced:\n%s", got)
+	}
+	for _, kept := range []string{"# Mine\n\nAlways run make test.\n", "Build with make.", "## After\n\nThe project's last word.\n"} {
+		if !strings.Contains(got, kept) {
+			t.Errorf("an update lost what was the project's, %q:\n%s", kept, got)
+		}
+	}
+	if strings.Count(got, "design-harness:begin") != 1 || strings.Count(got, "design-harness:end") != 1 {
+		t.Errorf("the marks are not as they were:\n%s", got)
+	}
+	if !strings.Contains(read("harness/goldfish/goldfish.yaml"), "the-projects-own") {
+		t.Error("an update replaced the project's settings")
+	}
+	if strings.Contains(read("harness/FRAMEWORK.md"), "changed in place") {
+		t.Error("an update did not replace the harness")
+	}
+	if !strings.Contains(out, "replaced  the method's rules in CLAUDE.md") {
+		t.Errorf("an update did not say what it replaced:\n%s", out)
+	}
+
+	// With nothing stale, nothing is rewritten.
+	out = run(t, "sh", script, "--update", root)
+	if read("CLAUDE.md") != got || !strings.Contains(out, "the method's rules are current") {
+		t.Errorf("a second update changed the rules again:\n%s", out)
+	}
+}
