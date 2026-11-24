@@ -4,7 +4,8 @@
 # code to it.
 #
 #   ./bootstrap /path/to/project            adopt the method there
-#   ./bootstrap --update /path/to/project   replace its harness with this one
+#   ./bootstrap --update /path/to/project   replace its harness with this one,
+#                                           and the method's rules in CLAUDE.md
 #
 #   --standalone  give the project a harness of its own even under a root
 #   --no-hooks    do not install the git hooks
@@ -87,7 +88,8 @@ fi
 
 if [ -n "$ROOT" ]; then
   # Nested: the root's harness, by relative path, and no copy.
-  [ "$UPDATE" -eq 0 ] || die "$NAME is nested under $ROOT and has no harness of its own to update; update the root's:  $0 --update $ROOT"
+  # A nested project has no harness to replace: the root's is updated at
+  # the root. --update here refreshes its rules from the root's templates.
   H="$ROOT/harness"
   HREL="$UP/harness"
   PARENT="$(basename "$(git -C "$ROOT" remote get-url origin 2>/dev/null || echo "$ROOT")" .git)"
@@ -146,7 +148,29 @@ if [ ! -f "$T/CLAUDE.md" ]; then
   fill "$H/templates/$CLAUDE_TEMPLATE" > "$T/CLAUDE.md"
   did wrote "CLAUDE.md"
 elif grep -q 'design-harness:begin' "$T/CLAUDE.md"; then
-  did kept "CLAUDE.md"
+  # THE METHOD'S RULES ARE THE HARNESS'S, AND GO WHERE IT GOES. They were
+  # written from a template, between two marks; an update that replaced the
+  # harness and left them would leave a project following last year's rules.
+  # So --update rewrites what lies between the marks, and nothing outside
+  # them: every other line of the file is the project's.
+  if [ "$UPDATE" -eq 1 ] && grep -q 'design-harness:end' "$T/CLAUDE.md"; then
+    BLOCK="$(mktemp)"
+    fill "$H/templates/$CLAUDE_TEMPLATE" | awk '/design-harness:begin/{p=1} p{print} /design-harness:end/{p=0}' > "$BLOCK"
+    awk -v block="$BLOCK" '
+      /design-harness:begin/ { while ((getline line < block) > 0) print line; skip = 1; next }
+      /design-harness:end/   { skip = 0; next }
+      !skip                  { print }' "$T/CLAUDE.md" > "$T/CLAUDE.md.new"
+    if cmp -s "$T/CLAUDE.md" "$T/CLAUDE.md.new"; then
+      rm -f "$T/CLAUDE.md.new"
+      did kept "CLAUDE.md (the method's rules are current)"
+    else
+      mv "$T/CLAUDE.md.new" "$T/CLAUDE.md"
+      did replaced "the method's rules in CLAUDE.md, between their marks; every other line kept"
+    fi
+    rm -f "$BLOCK"
+  else
+    did kept "CLAUDE.md"
+  fi
 else
   { printf '\n## The design, and how a change lands\n\n'; fill "$H/templates/$CLAUDE_TEMPLATE" | sed '1,2d'; } >> "$T/CLAUDE.md"
   did added "the method's rules, at the end of CLAUDE.md"
