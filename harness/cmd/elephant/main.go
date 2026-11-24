@@ -111,6 +111,17 @@ func main() {
 		}
 		fmt.Printf("elephant: next, draft it:  go -C %s run ./cmd/elephant draft\n", s.HarnessPath())
 
+	case "where":
+		// Where the repository sits, for a script to read: one key=value a
+		// line. bootstrap uses it to write a CI workflow that checks out
+		// what the checker will need.
+		if parent != nil {
+			fmt.Printf("root=%s\npath=%s\n", parent.Name, parent.Path)
+		}
+		if c := s.Contracts(); c != nil {
+			fmt.Printf("contracts_path=%s\ncontracts_remote=%s\n", strings.Trim(c.Path, "/"), c.Remote)
+		}
+
 	case "prompt":
 		p, err := prompt(harness, root, s, string(template))
 		if err != nil {
@@ -168,7 +179,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: elephant survey|skeleton|prompt|draft [-root DIR] [-force] [-claude BIN]")
+	fmt.Fprintln(os.Stderr, "usage: elephant survey|skeleton|prompt|draft|where [-root DIR] [-force] [-claude BIN]")
 	os.Exit(2)
 }
 

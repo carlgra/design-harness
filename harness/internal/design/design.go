@@ -40,6 +40,16 @@ type Design struct {
 	// Repos are the repositories nested under this one, which is then a
 	// root: the map. sync reads it, and the checker holds the disk to it.
 	Repos []RepoEntry `yaml:"repos"`
+	// Serves are the RPCs and request fields the contracts repository names
+	// this one as serving, each with the test that walks it.
+	Serves []Served `yaml:"serves"`
+}
+
+// Served is one RPC or request field this repository serves, by its fully
+// qualified name, and the test that proves it is served.
+type Served struct {
+	Name string `yaml:"name"`
+	Test string `yaml:"test"`
 }
 
 // RepoEntry is one repository nested under a root.

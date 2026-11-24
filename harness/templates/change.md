@@ -18,6 +18,18 @@
 <!-- What else would have solved it, and why not. This is the part nobody can
      reconstruct later. -->
 
+<!-- In a contracts repository only, add a section with a fenced block whose info
+     string is `servers`: each RPC and request field this change adds, the
+     repository that serves it and the ones that call it, by their paths on the
+     root's map; or `[]` when it adds none.
+
+         ```servers
+         - name: billing.v1.BillingService.CreateInvoice
+           server: billing
+           callers: [ledger]
+         ```
+-->
+
 ## Files
 
 <!-- Each file to add or change, and why that file. A new path must be under a

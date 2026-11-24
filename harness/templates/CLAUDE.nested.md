@@ -27,7 +27,10 @@ decision there applies here unchanged. The method is in `{{HARNESS}}/FRAMEWORK.m
 4. **This is its own git repository. Work in it from its own root.** The harness is
    `{{HARNESS}}`, the root's: there is no copy here, and nothing committed here points
    outside this repository except to it. If `{{PARENT}}` keeps a contracts repository, an
-   interface between repositories is defined there and nowhere else.
+   interface between repositories is defined there and nowhere else: a note there lists
+   each new RPC and request field in a `servers` block with the repository that serves
+   it, and the repository that serves one names a test for it under `serves:` in its
+   design. The checker refuses either half that is missing.
 5. **Never commit on `main`, and never run `git push`.** Branch first, `feat/<what>` or
    `fix/<what>`, and push with `{{HARNESS}}/safe-push`, from here, which runs the checker
    and opens the pull request. A person merges.

@@ -103,6 +103,9 @@ A repository asks more of its notes by adding a heading to `sections:`, for inst
 
 `go -C harness run ./cmd/check` refuses, with a line saying what and where:
 
+0. *(under a root that keeps a contracts repository)* a new definition no note lists
+   with its server, and a definition this repository serves with no test named for it;
+   see *Several repositories under one root*;
 1. a source file under no glob in `files:`: nobody designed it;
 2. a name in `tests:` that is in no test file the design accounts for;
 3. a decision or invariant id defined twice, or cited and defined nowhere;
@@ -230,6 +233,32 @@ project/               the root: its own repository
 - **An interface between repositories is defined in the contracts repository and nowhere
   else**, where the root keeps one. A service's design says which definitions it serves
   and which it calls.
+- **A definition names who serves it, and the server names its test.** In the contracts
+  repository, the note for a change carries a fenced `servers` block listing each RPC and
+  request field it adds, the repository that serves it and the ones that call it, or
+  `[]`:
+
+  ````
+  ```servers
+  - name: billing.v1.CreateInvoiceRequest.currency
+    server: billing
+    callers: [ledger]
+  ```
+  ````
+
+  The contracts repository's checker refuses a new definition no note lists. Once the
+  definition has merged, the checker in `billing` refuses until its spine names a test
+  for it:
+
+  ```yaml
+  serves:
+    - name: billing.v1.CreateInvoiceRequest.currency
+      test: TestAnInvoiceIsIssuedInItsCurrency
+  ```
+
+  Only what is merged binds, so the definition and its server can be built in either
+  order: the server's test first, then the definition; or the definition as a draft
+  pull request until the server is ready. Definitions are read from `.proto` files.
 - **What the root's spine asks of every repository is written into each.** A nested
   repository's `commits:` and `notes:` are its own lines, taken from the root's when it
   adopted the method. Nothing is inherited at check time, so a design always says what
