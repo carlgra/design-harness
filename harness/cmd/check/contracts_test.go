@@ -99,6 +99,27 @@ func TestTheProtoScanFindsRPCsAndRequestFields(t *testing.T) {
 	if !reflect.DeepEqual(s.Requests, want) {
 		t.Errorf("requests %v", s.Requests)
 	}
+	// A file with no package names its definitions without one.
+	bare := ScanAll(map[string]string{"a.proto": "syntax = \"proto3\";\nservice S { rpc Do(DoRequest) returns (DoRequest); }\nmessage DoRequest { string id = 1; }\n"})
+	if !bare.RPCs["S.Do"] || !bare.Requests["DoRequest"]["id"] {
+		t.Errorf("no package: rpcs %v, requests %v", bare.RPCs, bare.Requests)
+	}
+	// gen/ is generated code at the top only; vendor and node_modules are
+	// copies wherever they sit, and only as whole directory names.
+	for p, is := range map[string]bool{
+		"billing/v1/billing.proto":     true,
+		"gen/billing.proto":            false,
+		"billing/gen/billing.proto":    true,
+		"vendor/x/a.proto":             false,
+		"third/vendor/x/a.proto":       false,
+		"web/node_modules/x/a.proto":   false,
+		"vendors/v1/vendors.proto":     true,
+		"billing/v1/billing.proto.txt": false,
+	} {
+		if isProto(p) != is {
+			t.Errorf("isProto(%q) = %v", p, !is)
+		}
+	}
 	fields := map[string]bool{
 		"billing.v1.ListInvoicesRequest.customer": true, "billing.v1.ListInvoicesRequest.page_size": true,
 		"billing.v1.ListInvoicesRequest.labels": true, "billing.v1.ListInvoicesRequest.after": true,

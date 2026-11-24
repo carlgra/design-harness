@@ -13,7 +13,8 @@
 #
 # Where the root's map lists a contracts repository, it is checked out beside
 # this one as well: the checker reads there what this repository must serve.
-# A private one needs its own secret, the same way.
+# A private one needs its own secret, the same way, named on its checkout:
+#     ssh-key: ${{ secrets.CONTRACTS_DEPLOY_KEY }}      or      token: ${{ secrets.CONTRACTS_READ_TOKEN }}
 #
 # If validate: needs a toolchain other than Go, set it up in a step before
 # "check".

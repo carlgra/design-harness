@@ -151,9 +151,19 @@ func isNote(p string) bool {
 }
 
 // isProto is a definition a person wrote: generated and vendored copies are
-// not the contract.
+// not the contract. Generated code is under gen/ at the top of the
+// repository; a vendored copy is under a directory named vendor or
+// node_modules, at any depth.
 func isProto(p string) bool {
-	return strings.HasSuffix(p, ".proto") && !strings.HasPrefix(p, "gen/") && !strings.Contains(p, "node_modules/") && !strings.Contains(p, "vendor/")
+	if !strings.HasSuffix(p, ".proto") || strings.HasPrefix(p, "gen/") {
+		return false
+	}
+	for _, seg := range strings.Split(path.Dir(p), "/") {
+		if seg == "vendor" || seg == "node_modules" {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *Tree) notes() []Note {
