@@ -30,6 +30,7 @@ CLAUDE.md            how an agent works here: the rules, and the project's own
 design/DESIGN.md     the design, with its spine
 design/changes/      one short note per change: problem, plan, alternatives, files
 harness/             the checker, goldfish, elephant, the push script, the hooks, this file
+                     (in a repository nested under a root, the root's: ../harness)
 <code>               the project itself
 ```
 
@@ -184,6 +185,59 @@ Adopting the method is itself a change, so it has a note: bootstrap writes
 `design/changes/<date>-adopt-the-design.md`, and the rules for notes begin that day.
 Nothing written before is reread.
 
+## Several repositories under one root
+
+A system is usually several repositories: each service in its own, checked out side by
+side in a project folder, with a contracts repository beside them holding the definitions
+they talk through.
+
+```
+project/               the root: its own repository
+  design/DESIGN.md     what binds every repository, and the map of them
+  harness/             the one harness
+  contracts/           its own repository: every definition the services talk through
+  billing/             its own repository: a service
+    design/DESIGN.md   billing's design: only what is billing's own
+    CLAUDE.md          "read the root's first"; the harness is ../harness
+  ledger/              its own repository: another service
+```
+
+- **The root holds what binds all of them**, and nothing else: the decisions that apply
+  everywhere, the harness, and the map. Its spine lists the nested repositories:
+
+  ```yaml
+  repos:
+    - path: contracts
+      kind: contracts
+      remote: git@github.com:acme/contracts.git
+    - path: billing
+      kind: service
+      remote: git@github.com:acme/billing.git
+  ```
+
+  The root's `.gitignore` ignores each of them. It pins no commit of any: the map says
+  which exist and where they come from. `go -C harness run ./cmd/sync` clones what is
+  missing, so a fresh machine is `git clone` of the root and one command. Where a map is
+  given, the checker refuses a repository on disk under the root that it does not list.
+- **A nested repository has a design and no harness.** Every command is run from its own
+  directory with the root's harness: `go -C ../harness run ./cmd/check`,
+  `../harness/safe-push`, `../harness/hooks/install`. It is its own git repository:
+  branch, commit and push from its own root.
+- **A decision lives in the repository whose scope it governs.** What applies everywhere
+  is the root's. A nested design cites it by the root's name, `project/ADR-0004`, and
+  does not repeat it; the checker follows the citation and refuses one the root does not
+  define. The root never cites down.
+- **An interface between repositories is defined in the contracts repository and nowhere
+  else**, where the root keeps one. A service's design says which definitions it serves
+  and which it calls.
+- **What the root's spine asks of every repository is written into each.** A nested
+  repository's `commits:` and `notes:` are its own lines, taken from the root's when it
+  adopted the method. Nothing is inherited at check time, so a design always says what
+  binds its repository.
+
+`bootstrap` does this by itself: run on a repository that sits under a root, it copies no
+harness and sets all of the above up, then prints the entry to add to the root's map.
+
 ## Commands
 
 ```
@@ -198,7 +252,11 @@ harness/safe-push                                # check, push, open the pull re
 harness/safe-push --no-pr                        # push only
 harness/safe-push --tag v1.2.0                   # tag main's tip, as merged
 harness/hooks/install                            # once per clone
+go -C harness run ./cmd/sync                     # at a root: make the disk match repos:
 ```
+
+In a repository nested under a root, the same commands with the root's harness:
+`go -C ../harness run ./cmd/check`, `../harness/safe-push`.
 
 The harness is Go, so that each command needs nothing but the Go toolchain; the project
 may be in any language. It is a module of its own in `harness/` and is part of the

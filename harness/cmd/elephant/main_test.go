@@ -46,7 +46,7 @@ var existing = map[string]string{
 	"design/old-notes.md":        "# Notes from before\n",
 }
 
-const template = "---\nfiles:\n{{FILES}}\ntests: []\n{{VALIDATE}}\n{{COMMITS}}\nnotes:\n  from: {{DATE}}\n---\n\n# {{NAME}}\n\n" + SkeletonMark + "\n\n## Scope\n\nTODO(elephant)\n"
+const template = "---\nfiles:\n{{FILES}}\ntests: []\n{{VALIDATE}}\n{{COMMITS}}\nnotes:\n  from: {{DATE}}\n  sections: {{SECTIONS}}\n{{REPOS}}\n---\n\n# {{NAME}}\n\n" + SkeletonMark + "\n\n## Scope\n\n{{PARENT}}\n\nTODO(elephant)\n"
 
 // The survey reports what is there and decides nothing: every file falls
 // under a glob it proposes, the tests it lists are ones that exist, the gate
@@ -54,7 +54,7 @@ const template = "---\nfiles:\n{{FILES}}\ntests: []\n{{VALIDATE}}\n{{COMMITS}}\n
 // decisions are found, design/ included.
 func TestTheSurveySaysWhatIsThereAndDecidesNothing(t *testing.T) {
 	repo := repoWith(t, existing)
-	s := survey(repo, nil, "2026-01-02")
+	s := survey(repo, nil, nil, "2026-01-02")
 	for _, f := range repo.Files {
 		if !design.Exempt[f] && !design.Claimed(s.Globs, f) {
 			t.Errorf("%s is under no glob the survey proposes: %v", f, s.Globs)
@@ -80,7 +80,7 @@ func TestTheSurveySaysWhatIsThereAndDecidesNothing(t *testing.T) {
 	for k, v := range existing {
 		withHarness[k] = v
 	}
-	h := survey(repoWith(t, withHarness), nil, "2026-01-02")
+	h := survey(repoWith(t, withHarness), nil, nil, "2026-01-02")
 	if h.Harness != 2 || !design.Claimed(h.Globs, "harness/FRAMEWORK.md") || strings.Contains(strings.Join(h.Tests, "|"), "TestOfTheHarness") || strings.Contains(strings.Join(h.Docs, "|"), "harness/") {
 		t.Errorf("the harness was surveyed as the project's own: %d files, tests %v, docs %v", h.Harness, h.Tests, h.Docs)
 	}
@@ -100,7 +100,7 @@ func TestASkeletonsSpineAccountsForEveryFileAndSwitchesNothingOn(t *testing.T) {
 	repo := repoWith(t, existing)
 	read := func(subjects []string) design.Design {
 		t.Helper()
-		doc := survey(repo, subjects, "2026-01-02").Skeleton(template)
+		doc := survey(repo, nil, subjects, "2026-01-02").Skeleton(template)
 		fm, err := design.ParseFrontmatter(doc)
 		if err != nil {
 			t.Fatalf("%v\n%s", err, doc)
@@ -221,7 +221,7 @@ func TestADraftingSessionIsHandedTheInstructionsTheSurveyAndTheShape(t *testing.
 	os.MkdirAll(filepath.Join(harness, "elephant"), 0o755)
 	os.WriteFile(filepath.Join(harness, "elephant", "reverse.md"), []byte("INSTRUCTIONS\n"), 0o644)
 	repo := repoWith(t, existing)
-	s := survey(repo, nil, "2026-01-02")
+	s := survey(repo, nil, nil, "2026-01-02")
 	p, err := prompt(harness, repo.Root, s, template)
 	if err != nil {
 		t.Fatal(err)
@@ -236,5 +236,96 @@ func TestADraftingSessionIsHandedTheInstructionsTheSurveyAndTheShape(t *testing.
 	}
 	if strings.Contains(p, SkeletonMark) {
 		t.Error("the shape handed over still carries the skeleton's mark")
+	}
+}
+
+// A repository nested under a root takes the root's rules into its own
+// spine, where they can be read: the commit convention and the sections the
+// root asks of a note. Its scope says where it sits and how the root is
+// cited, the survey names the siblings the root lists, and a drafting session
+// is handed the root's design. A repository that stands alone gets none of it.
+func TestANestedRepositoryTakesItsRulesFromTheRoot(t *testing.T) {
+	repo := repoWith(t, existing)
+	parent := &design.Parent{
+		Name: "project", Path: "services/billing", Up: "../..",
+		Doc: "---\nfiles: [harness/**]\n---\n\n# project\n\n### ADR-0004 — interfaces live in contracts\n",
+		Design: design.Design{
+			Commits: "conventional",
+			Notes:   design.Notes{Sections: []string{"Problem", "Plan", "Alternatives rejected", "Files", "What existing data changes meaning"}},
+			Repos: []design.RepoEntry{
+				{Path: "services/billing", Kind: "service"},
+				{Path: "contracts", Kind: "contracts"},
+				{Path: "services/ledger", Kind: "service", Status: "planned"},
+			},
+		},
+	}
+	s := survey(repo, parent, nil, "2026-01-02")
+	doc := s.Skeleton(template)
+	fm, err := design.ParseFrontmatter(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d design.Design
+	if err := yaml.Unmarshal([]byte(fm.YAML), &d); err != nil {
+		t.Fatalf("the spine does not parse: %v\n%s", err, fm.YAML)
+	}
+	if d.Commits != "conventional" || len(d.Notes.Sections) != 5 || d.Notes.Sections[4] != "What existing data changes meaning" {
+		t.Errorf("the root's rules were not taken into the spine: %+v", d)
+	}
+	if len(d.Repos) != 0 {
+		t.Errorf("a nested repository was given a map: %+v", d.Repos)
+	}
+	for _, want := range []string{"nested under `project`, at `services/billing/`", "`../../harness`", "as `project/ADR-0001`"} {
+		if !strings.Contains(fm.Body, want) {
+			t.Errorf("the scope does not say %q:\n%s", want, fm.Body)
+		}
+	}
+	md := s.Markdown()
+	for _, want := range []string{"## Where this repository sits", "- `contracts/` (contracts)", "- `services/ledger/` (service, planned)"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("the survey does not say %q", want)
+		}
+	}
+	if strings.Contains(md, "- `services/billing/` (service)") {
+		t.Error("the repository was listed as its own sibling")
+	}
+	harness := t.TempDir()
+	os.MkdirAll(filepath.Join(harness, "elephant"), 0o755)
+	os.WriteFile(filepath.Join(harness, "elephant", "reverse.md"), []byte("INSTRUCTIONS\n"), 0o644)
+	p, err := prompt(harness, repo.Root, s, template)
+	if err != nil || !strings.Contains(p, "The design of `project`, the root this repository is nested under") || !strings.Contains(p, "### ADR-0004 — interfaces live in contracts") {
+		t.Errorf("a drafting session was not handed the root's design (%v)", err)
+	}
+
+	// The first note is dated the day the rules begin, so it carries every
+	// section the root asks for, the one the template lacks included.
+	note := s.AdoptionNote("# Adopted\n\n## The problem\n\nx\n\n## The plan\n\nFrom {{DATE}}, with `{{HARNESS}}/`.\n\n## Alternatives rejected\n\nx\n\n## Files\n\nx\n")
+	if !strings.Contains(note, "From 2026-01-02, with `../../harness/`.") || !strings.Contains(note, "\n## What existing data changes meaning\n\nNothing: ") || strings.Count(note, "\n## ") != 5 {
+		t.Errorf("the first note does not carry what the root asks of a note:\n%s", note)
+	}
+
+	alone := survey(repo, nil, nil, "2026-01-02")
+	doc = alone.Skeleton(template)
+	if strings.Contains(doc, "nested under") || strings.Contains(doc, "{{") || strings.Contains(alone.Markdown(), "Where this repository sits") {
+		t.Errorf("a repository that stands alone was told it is nested, or a placeholder was left:\n%s", doc)
+	}
+}
+
+// A root's skeleton carries the map: every repository found nested under it,
+// with where it is cloned from and a kind read from its name.
+func TestARootsSkeletonCarriesTheMap(t *testing.T) {
+	repo := repoWith(t, existing)
+	s := survey(repo, nil, nil, "2026-01-02")
+	s.Map = []design.RepoEntry{{Path: "billing", Kind: kindOf("billing"), Remote: "git@host:x/billing.git"}, {Path: "contracts", Kind: kindOf("contracts")}}
+	fm, err := design.ParseFrontmatter(s.Skeleton(template))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d design.Design
+	if err := yaml.Unmarshal([]byte(fm.YAML), &d); err != nil {
+		t.Fatalf("the spine does not parse: %v\n%s", err, fm.YAML)
+	}
+	if len(d.Repos) != 2 || d.Repos[0].Path != "billing" || d.Repos[0].Kind != "service" || d.Repos[0].Remote != "git@host:x/billing.git" || d.Repos[1].Kind != "contracts" || d.Repos[1].Remote != "" {
+		t.Errorf("the map was written as %+v", d.Repos)
 	}
 }

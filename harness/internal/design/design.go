@@ -37,6 +37,22 @@ type Design struct {
 	Commits string `yaml:"commits"`
 	// Notes says what a design note under design/changes/ must carry.
 	Notes Notes `yaml:"notes"`
+	// Repos are the repositories nested under this one, which is then a
+	// root: the map. sync reads it, and the checker holds the disk to it.
+	Repos []RepoEntry `yaml:"repos"`
+}
+
+// RepoEntry is one repository nested under a root.
+type RepoEntry struct {
+	// Path is where it is checked out, relative to the root.
+	Path string `yaml:"path"`
+	// Kind says what it is, in the root's own words: service, contracts,
+	// platform. Nothing in the harness gives a kind meaning yet.
+	Kind string `yaml:"kind"`
+	// Remote is where it is cloned from. Empty means it is local only.
+	Remote string `yaml:"remote"`
+	// Status is "planned" for one that is decided and does not exist yet.
+	Status string `yaml:"status"`
 }
 
 // Notes are the rules a design note is held to.
@@ -68,6 +84,49 @@ type Repo struct {
 	Files []string
 	// Dirs are every directory walked, relative to Root.
 	Dirs []string
+}
+
+// Parent is the root a nested repository sits under: the nearest directory
+// above it that holds a design and a harness.
+type Parent struct {
+	Root   string // absolute path
+	Name   string
+	Design Design
+	Body   string
+	Doc    string // the whole document, as a session is handed it
+	// Path is the nested repository's path relative to the root, and Up the
+	// way back: "billing" and "..", or "services/billing" and "../..".
+	Path string
+	Up   string
+}
+
+// FindParent finds the root a repository is nested under, or nil when it
+// stands alone. A root is a directory above it that holds both a design and
+// the harness's Go module; the nearest one is the root.
+func FindParent(root string) (*Parent, error) {
+	for dir := filepath.Dir(root); ; dir = filepath.Dir(dir) {
+		if IsRoot(dir) {
+			if _, err := os.Stat(filepath.Join(dir, "harness", "go.mod")); err == nil {
+				b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(DocPath)))
+				if err != nil {
+					return nil, err
+				}
+				fm, err := ParseFrontmatter(string(b))
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", filepath.Join(dir, DocPath), err)
+				}
+				p := &Parent{Root: dir, Name: NameOf(dir), Body: fm.Body, Doc: string(b), Path: Rel(dir, root)}
+				if err := yaml.Unmarshal([]byte(fm.YAML), &p.Design); err != nil {
+					return nil, fmt.Errorf("%s: frontmatter: %w", filepath.Join(dir, DocPath), err)
+				}
+				p.Up = strings.TrimSuffix(strings.Repeat("../", strings.Count(p.Path, "/")+1), "/")
+				return p, nil
+			}
+		}
+		if filepath.Dir(dir) == dir {
+			return nil, nil
+		}
+	}
 }
 
 // DocPath is where the design lives, relative to a root.

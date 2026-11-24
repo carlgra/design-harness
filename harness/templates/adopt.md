@@ -11,7 +11,7 @@ change broke a rule nobody had written down.
 
 Adopt the design-harness method. `design/DESIGN.md` becomes the one design
 document, current state, edited in place. Its frontmatter accounts for every source file
-and names the tests that must exist; `harness/` holds the checker that refuses a push when
+and names the tests that must exist; `{{HARNESS}}/` holds the checker that refuses a push when
 either is untrue, the push script and the hooks. From {{DATE}} every change starts with a
 note here, in four parts.
 
@@ -31,7 +31,7 @@ is a draft and the checker says so on every run.
 
 - `design/DESIGN.md`: the design.
 - `design/changes/`: one note per change, this one first.
-- `harness/`: the checker, goldfish, elephant, the push script, the hooks and the method
-  itself, `harness/FRAMEWORK.md`.
+- `{{HARNESS}}/`: the checker, goldfish, elephant, the push script, the hooks and the
+  method itself, `{{HARNESS}}/FRAMEWORK.md`.
 - `CLAUDE.md`: how an agent works here.
 - `.github/workflows/harness.yml`: the checker as the status check `main` requires.

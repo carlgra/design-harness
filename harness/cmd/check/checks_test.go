@@ -92,7 +92,7 @@ func TestAnIdIsDefinedOnceAndEveryCitationLands(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			res := &Result{}
-			checkIDs(c.body, res)
+			checkIDs(c.body, nil, res)
 			if len(res.Failures) != len(c.refused) {
 				t.Fatalf("expected %d refusal(s), got %v", len(c.refused), res.Failures)
 			}
@@ -119,5 +119,45 @@ func TestAnUnfinishedDesignIsSaidToBeUnfinished(t *testing.T) {
 	res.report(&out, repo)
 	if !strings.Contains(out.String(), "still says TODO(elephant) in 2 place(s)") || !strings.Contains(out.String(), "harness: OK") {
 		t.Fatalf("the report does not say the design is unfinished:\n%s", out.String())
+	}
+}
+
+// A root's map is true: where its design lists the repositories nested under
+// it, one found on disk that it does not list is refused. One it lists that
+// is not on disk is sync's to clone, and a design with no map is not a root.
+func TestARepositoryOnDiskIsOnTheMap(t *testing.T) {
+	d := design.Design{Files: []string{"harness/**"}, Repos: []design.RepoEntry{
+		{Path: "billing", Kind: "service", Remote: "git@host:x/billing.git"},
+		{Path: "contracts/", Kind: "contracts"},
+		{Path: "ledger", Kind: "service", Remote: "git@host:x/ledger.git"},
+	}}
+	repo := repoWith(t, d, nil)
+	repo.NestedRepos = []string{"billing", "contracts", "stray"}
+	res := runChecks(repo)
+	if len(res.Failures) != 1 || !strings.Contains(res.Failures[0], "stray: a repository on disk that the map does not list") {
+		t.Fatalf("expected only the stray repository to be refused, got %v", res.Failures)
+	}
+	repo.Design.Repos = nil
+	if res := runChecks(repo); res.failed() {
+		t.Fatalf("a design with no map was held to one: %v", res.Failures)
+	}
+}
+
+// A nested repository cites the root's decisions by the root's name, and the
+// citation is followed into the root's design: one the root does not define
+// is refused, one it does lands, and a repository that is not the root is not
+// looked up.
+func TestACitationOfTheRootLandsInTheRootsDesign(t *testing.T) {
+	parent := &design.Parent{Name: "project", Body: "### ADR-0004 — interfaces live in contracts\n\n- **INV-002** — a thing.\n"}
+	body := "### ADR-0001 — this service is Go\n\nBound by project/ADR-0004 and project/INV-002, and by project/ADR-0099 twice: project/ADR-0099.\nSee also elsewhere/ADR-0500.\n"
+	res := &Result{}
+	checkIDs(body, parent, res)
+	if len(res.Failures) != 1 || !strings.Contains(res.Failures[0], "cites project/ADR-0099") || !strings.Contains(res.Failures[0], "project's design does not define") {
+		t.Fatalf("expected only project/ADR-0099 to be refused, got %v", res.Failures)
+	}
+	res = &Result{}
+	checkIDs(body, nil, res)
+	if res.failed() {
+		t.Fatalf("a repository under no root had a qualified citation looked up: %v", res.Failures)
 	}
 }

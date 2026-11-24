@@ -17,7 +17,8 @@ tests: []
 # What a note under design/changes/ carries, from the date the rule began.
 notes:
   from: {{DATE}}
-  sections: [Problem, Plan, Alternatives rejected, Files]
+  sections: {{SECTIONS}}
+{{REPOS}}
 ---
 
 # {{NAME}}
@@ -31,6 +32,8 @@ change to the code starts with a note under `design/changes/` and ends with this
 file saying what is now true.
 
 ## Scope
+
+{{PARENT}}
 
 TODO(elephant): what this repository is for, in a paragraph a stranger could
 repeat. Then what it holds, and what it deliberately does not.

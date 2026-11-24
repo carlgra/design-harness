@@ -29,6 +29,12 @@ tests:
   - TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing
   - TestASubjectThatIsNotConventionalIsRefused
   - TestTheConventionBindsOnlyARepositoryWhoseDesignAsksForIt
+  - TestARepositoryOnDiskIsOnTheMap
+  - TestACitationOfTheRootLandsInTheRootsDesign
+  - TestANestedRepositoryTakesItsRulesFromTheRoot
+  - TestARootsSkeletonCarriesTheMap
+  - TestARepositoryUnderARootUsesTheRootsHarnessAndRules
+  - TestTheMapIsBroughtInLineWithoutMerging
 # The repository's own gate, run from the root after the checks pass.
 validate: go -C harness vet ./... && go -C harness test ./...
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
@@ -64,7 +70,9 @@ itself. Beside them is the CI workflow that runs the checker here, a copy of the
 template projects are given.
 
 It holds no project's design but its own, and nothing that names a particular project.
-It is not a library a project depends on: a project gets a copy and owns it (ADR-0005).
+It is not a library a project depends on: a project gets a copy and owns it (ADR-0005),
+or, where it is one of several repositories under a root, uses the root's copy
+(ADR-0009).
 
 ## How it works
 
@@ -88,17 +96,25 @@ The parts, all under `harness/`:
 
 - `internal/design` reads the spine and walks the repository for the files a design
   must account for. In a git repository that is git's view, tracked plus untracked and
-  not ignored; it never enters `.git` or `design/`. A directory with a `.git` of its own
+  not ignored; it never enters `.git` or `design/`. Directories are walked on disk,
+  ignored ones included, which is how a nested repository the root's `.gitignore` hides
+  is still found. A directory with a `.git` of its own
   is one of two things, and the walk enters neither: a nested repository, which has its
   own design, or a linked worktree, another checkout of this repository, whose files
-  are this repository's already. A test file is recognised by its name: `_test.go`,
+  are this repository's already. `go -C harness` moves a command's process into the harness, so a command takes
+  the directory it was typed in from the shell's `$PWD`, and its repository is the
+  nearest directory at or above that holding a design; the shell scripts find the
+  harness from their own path and the repository from git. A test file is recognised
+  by its name: `_test.go`,
   `test_*.py` or `*_test.py`, `.test.` or `.spec.` in a JavaScript or TypeScript name,
   and the like for Rust, Java, Kotlin and Ruby. Every command starts here.
 - `cmd/check`, the checker, loads the design and refuses four things: a file under no
   glob in `files:`; a name in `tests:` that appears in no test file the design accounts
   for; a decision or invariant id defined twice, or cited and defined nowhere; and a
   change note, dated from `notes: from:`, that lacks a section or leaves one empty.
-  A decision is defined by a heading that opens with its id, `### ADR-0007 — …`; an
+  A note's date is the `YYYY-MM-DD` its file name opens with, and a section is a
+  heading of any level whose title begins with the section's name, case and a leading
+  "The" aside, so `## The problem` is the section `Problem`. A decision is defined by a heading that opens with its id, `### ADR-0007 — …`; an
   invariant by a list item or heading that opens with its id, `- **INV-012** — …`;
   any other appearance is a citation, and one written `other-repository/ADR-0007` is
   that repository's and is not looked up. Then the checker runs `validate:`. It also
@@ -133,9 +149,11 @@ The parts, all under `harness/`:
   Commit, in a repository whose spine asks for them.
 - `safe-push` is the one way a branch is pushed. It never pushes `main`, or a branch
   not named `feat/` or `fix/`: work it finds on one is moved, commits and uncommitted
-  changes both, to a new branch named for the work, and that is what is pushed. It
-  requires a clean tree; checks the
-  branch merges cleanly; runs vet and the checker; checks the title; pushes with
+  changes both, to a new branch, and that is what is pushed. The new branch is named
+  `feat/` or `fix/` and then a slug of the first commit's subject, which is also the
+  pull request's title. It requires a clean tree; checks the branch merges cleanly into
+  the remote's default branch; runs `go vet` over the harness itself and then the
+  checker, which runs the repository's gate; checks the title; pushes with
   `--force-with-lease`; and opens the pull request on GitHub through `gh api`.
 - `hooks/pre-push` refuses a push to `main` and runs the checker; `hooks/commit-msg`
   runs `cmd/subject`; `hooks/install` points `core.hooksPath` at them and refuses to
@@ -143,7 +161,62 @@ The parts, all under `harness/`:
 - `templates/` holds the shapes: the design, a change note, the adoption note,
   `CLAUDE.md`, and the CI workflow.
 
-`bootstrap`, at the root, is POSIX shell. Given a project, new or old, it copies
+**Several repositories.** A system is usually several repositories: each service in
+its own, checked out side by side inside a project folder, with a contracts repository
+beside them holding the definitions they talk through. The project folder is itself a
+repository, the root. Its design holds what binds all of them, and its spine lists them
+under `repos:`, the map. An entry is a `path:` relative to the root; a `kind:` in the
+root's own words (service, contracts, platform), which nothing in the harness gives
+meaning to yet; a `remote:` it is cloned from, left out for one that is local only; and
+`status: planned` for one that is decided and does not exist yet:
+
+```yaml
+repos:
+  - path: contracts
+    kind: contracts
+    remote: git@github.com:acme/contracts.git
+  - path: billing
+    kind: service
+    remote: git@github.com:acme/billing.git
+  - path: ledger
+    kind: service
+    status: planned
+```
+ A repository nested under a root
+has a design of its own and no harness of its own. It runs the root's by relative
+path, `../harness` one level down, and what the root decided binds it and is cited by
+the root's name, `project/ADR-0004`. Every command finds its repository from the
+directory it was typed in and the harness from the nearest directory above that holds
+one, so the same commands work at the root and beneath it. The root is found the same
+way: the nearest directory above a repository that holds both a design and a harness.
+A repository's name, the root's included, is the last part of its `origin` remote
+without `.git`, or its directory's name when it has no remote; that is the name a
+citation of the root is qualified by. A nested repository is worked on in place, under
+its root: checked out with no root above it, it has no harness to run, which is why
+its CI checks the root out around it. A citation qualified by any name other than the
+root's found on disk is not looked up.
+
+- `cmd/sync` makes the disk match the map: it clones a listed repository that is
+  missing, fetches one that is there, skips one marked planned, and never merges.
+- The checker, at a root whose spine has a map, refuses a repository found on disk
+  under it that the map does not list: any directory with a `.git` of its own that is
+  not a linked worktree, a vendored checkout included, which is then listed with no
+  remote. A spine with no `repos:`, or an empty one, is no map and nothing is held to
+  it. In a nested repository it follows a citation
+  qualified by the root's name into the root's design, and refuses one not defined
+  there.
+- `cmd/elephant`, in a nested repository, says in the survey where it sits and which
+  siblings the root lists; writes a skeleton whose spine takes the root's `commits:`
+  and the sections the root asks of a note, and whose scope says how the root is cited;
+  and hands a drafting session the root's design after the shape, to cite and not
+  restate. The first note it writes carries every section that spine asks for, since
+  the note is dated the day the rules begin. At a root it writes the map into the
+  skeleton from the repositories it
+  finds, with a kind read from each one's name: `contracts` for one called
+  `contracts`, `protos`, `api`, `schemas` or the like, `service` for any other, there
+  for a person to correct.
+
+`bootstrap`, at this repository's root, is POSIX shell. Given a project, new or old, it copies
 `harness/` in, then writes `CLAUDE.md` or adds the method's rules to the end of one
 that exists, the CI workflow, then the skeleton and the first note, then installs the
 hooks, and runs the checker. Each of those is skipped when the thing is already there,
@@ -153,6 +226,19 @@ for this one, whole, keeping only the project's two settings files,
 `goldfish/goldfish.yaml` and `elephant/elephant.yaml`. A change a project made to its
 own copy is lost from the working tree by that and shows in `git diff`, where the
 person updating decides what to keep.
+
+Run on a repository under a root, `bootstrap` adopts it as nested: it copies no
+harness; writes `CLAUDE.md` from `templates/CLAUDE.nested.md`, which names the path to
+the root's harness and says to read the root's rules first; writes a CI workflow from
+`templates/harness.nested.yml` that checks the root out and this repository inside it,
+if the root has a GitHub origin to check out; installs the root's hooks by relative
+path; and prints the entry for the root's map and the line for its `.gitignore`, which
+are the root's files and a person's to change. `--standalone` gives such a repository
+a copy of its own instead; it is still a repository under the root: it belongs on the
+map, its skeleton takes the root's rules the same way, and its citations of the root
+are followed. The nested CI workflow checks out the root's default branch, by the
+owner and name read from the root's `origin` when bootstrap ran; the secret a private
+root needs is named in the workflow's comment and set by a person. A root is bootstrapped first, then each repository in it.
 
 ## Principles
 
@@ -200,14 +286,16 @@ person updating decides what to keep.
   TestTheProjectsRulesReplaceOnlyTheirOwnSection`, `test:
   TestADraftIsReadAsTheDesignAndTheRules`)*
 - **INV-008** — A survey and a skeleton decide nothing: the spine a skeleton writes
-  accounts for every file as it stands, names no test, and leaves the gate and the
-  commit convention as comments, the convention excepted when the history already
-  follows it. *(`test: TestTheSurveySaysWhatIsThereAndDecidesNothing`, `test:
+  accounts for every file as it stands, names no test, asks of a note the four default
+  sections from the day it is written, and leaves the gate and the commit convention as
+  comments. The convention is written switched on in two cases only: the history
+  already follows it, or the repository is nested under a root whose spine asks for it,
+  which is the root's decision and not the skeleton's (INV-016). *(`test: TestTheSurveySaysWhatIsThereAndDecidesNothing`, `test:
   TestASkeletonsSpineAccountsForEveryFileAndSwitchesNothingOn`)*
 - **INV-009** — Adopting with bootstrap overwrites nothing that exists, adding to the
   end of a `CLAUDE.md` that is already there and leaving every line of it as it was,
   and commits nothing; and a project it has run on passes the checker with its own copy of the
-  harness alone. With `--update`, and only then, it replaces `harness/`, and nothing
+  harness alone, or, adopted under a root, with the root's and no copy (INV-016). With `--update`, and only then, it replaces `harness/`, and nothing
   else.
   *(`test: TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`)*
 - **INV-010** — A design that still says `TODO(elephant)` is reported as unfinished on
@@ -225,6 +313,21 @@ person updating decides what to keep.
   *(`test: TestTheConventionBindsOnlyARepositoryWhoseDesignAsksForIt`, `test:
   TestASubjectThatIsNotConventionalIsRefused`)*
 
+- **INV-014** — A root's map is true of what is on disk: where a design lists the
+  repositories nested under it, every repository found under it is one it lists. One
+  listed and absent is not refused; `sync` clones it. *(`test:
+  TestARepositoryOnDiskIsOnTheMap`, `test: TestTheMapIsBroughtInLineWithoutMerging`)*
+- **INV-015** — In a repository nested under a root, a citation qualified by the root's
+  name is defined in the root's design. *(`test:
+  TestACitationOfTheRootLandsInTheRootsDesign`)*
+- **INV-016** — A repository adopted under a root has no harness of its own and points
+  at the root's by relative path; the rules it takes from the root's spine, the commit
+  convention and the sections of a note, are written into its own, and nothing is read
+  from the root's spine when it is checked. *(`test:
+  TestARepositoryUnderARootUsesTheRootsHarnessAndRules`, `test:
+  TestANestedRepositoryTakesItsRulesFromTheRoot`, `test:
+  TestARootsSkeletonCarriesTheMap`)*
+
 ## What no machine proves yet
 
 Each rule below is held by a person reading, with what would prove it and what makes
@@ -235,6 +338,9 @@ that due. None is accepted as final.
 | INV-005 | the command hands a session only the prompt, the design and for readiness the change, and runs it away from the project; the `claude` tool may still load a person's own global instructions and memory into it | a start-up mode of the tool that loads nothing and still uses the stored login, named in `internal/session`, with the test extended to pin it | the tool offering one |
 | INV-011 | the hook and the push script refuse a push to `main`; protection on the server is set by hand and nothing re-reads it | the checker reads the repository's protection through `gh api` and fails if the pull request requirement or the `harness` check is off | the first project that asks for it |
 | INV-012 | read at review | a test that fails on any `..` path or absolute path in a script, and on a name from a list of project names | the first slip |
+| contracts | the map records which nested repository is of kind `contracts`, and a drafting session is told the definitions live there; nothing checks that a definition names the repository that serves it, or that the server has a test for it | a check, at the root, that reads the contracts repository's definitions and each serving repository's spine | the first project that keeps its definitions in one format the check can read |
+| INV-016 | a nested repository's CI needs a secret that can read a private root, set by hand | none: it is a setting on the server | not due |
+| the rules in `CLAUDE.md` | written once, at adoption, from the template; `--update` replaces `harness/` and does not touch them, so a rule changed in the template reaches a project only when someone copies it | `--update` rewrites what lies between the method's two marks and nothing outside them | the first change to a rule in the template |
 | `safe-push` | exercised by use; no test walks its refusals | a shell test against a throwaway remote: `main` refused, a stray branch moved, a dirty tree refused, a conflict named | the next change to the script |
 
 ## How a change lands
@@ -319,6 +425,9 @@ particular change to guesswork.
   passes proves nothing while a person waits on it.
 - **A session with the repository to read.** It passes designs that say too little,
   because it fills the gaps from the code.
+- **Hand a nested repository's goldfish the root's design too.** It would pass a
+  design that leans on the root without saying what it relies on. A session is handed
+  the one design, whichever repository it is (ADR-0009).
 - **One question.** Comprehension alone passes a design that explains the present and
   is silent on what a change must respect.
 
@@ -381,7 +490,7 @@ and change what refuses its pushes.
   fails exactly when someone new starts.
 - **Python or shell for the checker.** Shell cannot parse the spine safely; Python
   brings an interpreter version and a package environment into every hook. What is
-  shell, `bootstrap`, `safe-push` and the three hooks, parses nothing: each only
+  shell, `bootstrap`, `safe-push`, the two hooks and their installer, parses nothing: each only
   drives git, `gh` and the Go commands.
 
 ### ADR-0006 — Nothing reaches main except through a pull request, and there is one door
@@ -422,6 +531,41 @@ from subjects, and a project adopting the method should not have its history ref
 - **Left to a separate tool.** The hook path is already the harness's, and a second
   tool would need the same care about not replacing it.
 
+### ADR-0009 — Several repositories share one harness at a root, and take their rules from it
+
+A root is a repository whose design lists the repositories nested under it. A nested
+repository has its own design, its own history and its own remote, and no harness: it
+runs the root's by relative path. What the root decided binds every repository under it
+and is cited there by the root's name and the id; a nested design records only what is
+its own. A rule the root's spine sets for all of them, the commit convention and the
+sections of a note, is written into a nested repository's own spine when it adopts the
+method, and from then on is read from there. The root pins no commit of any nested
+repository: its map says which exist and where they come from, and `sync` clones them.
+
+One harness because a rule that binds several repositories must be one piece of code,
+reviewed once. Written into each spine, and not looked up, because a design must say
+what binds its repository to a reader who has only that design, and because what a
+repository is held to should not change when the root's spine is edited for another
+repository's sake: a rule reaches a nested repository through a change to its own
+design.
+
+#### Alternatives rejected
+
+- **A copy of the harness in every repository.** Each is updated when someone
+  remembers, and the services drift onto different versions of the same check. A
+  repository that needs to stand alone can still have one, with `--standalone`.
+- **Inherit the root's spine at check time.** What binds a repository would then not be
+  in its design, and would change when it is checked out without its root.
+- **Git submodules.** The root would record every nested commit, turning each change to
+  a service into a second change to the root, and a fresh clone or worktree arrives
+  without them.
+- **One repository for everything.** A real choice for some projects, and then none of
+  this applies: one design, one harness. It is not forced on a project whose services
+  already have their own histories, owners and release cadences.
+- **Have bootstrap edit the root's design and `.gitignore`** to add the new repository.
+  They are the root's, changed through the root's own pull request; bootstrap prints
+  what to add.
+
 ### ADR-0008 — A change starts with a note in four parts, from a date
 
 A change to code starts with `design/changes/<date>-<slug>.md`: the problem, the plan,
@@ -454,9 +598,10 @@ against new rules turns every new rule into an afternoon of editing history.
 | `harness/cmd/goldfish/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. |
 | `harness/cmd/elephant/` | Reverse-engineering (ADR-0004): `survey.go` is the survey and the skeleton; `main.go` the four steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
+| `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
 | `harness/goldfish/` | `comprehension.md` and `readiness.md`, the two prompts; `goldfish.yaml`, the model, verdict prefix and budget. |
 | `harness/elephant/` | `reverse.md`, what a drafting session is told; `elephant.yaml`, the model and budget. |
-| `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow. |
+| `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills, `{{NAME}}`, `{{DATE}}`, `{{FILES}}`, `{{VALIDATE}}`, `{{COMMITS}}`, `{{SECTIONS}}`, `{{REPOS}}` and `{{PARENT}}`; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow; `CLAUDE.nested.md` and `harness.nested.yml`, the same two for a repository under a root (ADR-0009). |
 | `harness/safe-push` | The one door (ADR-0006). |
 | `harness/hooks/` | `pre-push`, `commit-msg`, and `install`. |
 | `.github/workflows/harness.yml` | This repository's CI: vet, the harness's tests, the checker. A copy of the template. |
@@ -481,3 +626,9 @@ Paths a fault would travel, and the test that walks each:
 - bootstrap leaves a project passing, overwrites nothing, and is safe to run twice — `TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`
 - a subject that is not conventional is refused — `TestASubjectThatIsNotConventionalIsRefused`
 - a repository that has not asked for the convention is not bound by it — `TestTheConventionBindsOnlyARepositoryWhoseDesignAsksForIt`
+- a repository on disk under a root that the map does not list is refused — `TestARepositoryOnDiskIsOnTheMap`
+- a citation of the root's that the root does not define is refused — `TestACitationOfTheRootLandsInTheRootsDesign`
+- a nested repository's skeleton carries the root's rules, and one that stands alone carries none — `TestANestedRepositoryTakesItsRulesFromTheRoot`
+- a root's skeleton lists every repository found under it — `TestARootsSkeletonCarriesTheMap`
+- a repository under a root is given no second harness, and passes with the root's — `TestARepositoryUnderARootUsesTheRootsHarnessAndRules`
+- a listed repository is cloned or fetched and never merged — `TestTheMapIsBroughtInLineWithoutMerging`

@@ -72,7 +72,11 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	s := survey(repo, recentSubjects(root, 200), time.Now().Format("2006-01-02"))
+	parent, err := design.FindParent(root)
+	if err != nil {
+		fatal(err)
+	}
+	s := survey(repo, parent, recentSubjects(root, 200), time.Now().Format("2006-01-02"))
 	template, err := os.ReadFile(filepath.Join(harness, "templates", "DESIGN.md"))
 	if err != nil {
 		fatal(err)
@@ -91,7 +95,21 @@ func main() {
 			fatal(err)
 		}
 		fmt.Printf("elephant: wrote %s: a spine that accounts for all %d files, and every section still a question\n", design.DocPath, s.Files)
-		fmt.Println("elephant: next, draft it:  go -C harness run ./cmd/elephant draft")
+		// Adopting the method is itself a change, so it has a note: the
+		// first, unless the repository already keeps notes.
+		changes := filepath.Join(root, "design", "changes")
+		if existing, _ := filepath.Glob(filepath.Join(changes, "*.md")); len(existing) == 0 {
+			adopt, err := os.ReadFile(filepath.Join(harness, "templates", "adopt.md"))
+			if err != nil {
+				fatal(err)
+			}
+			name := s.Date + "-adopt-the-design.md"
+			if err := write(filepath.Join(changes, name), s.AdoptionNote(string(adopt))); err != nil {
+				fatal(err)
+			}
+			fmt.Printf("elephant: wrote design/changes/%s\n", name)
+		}
+		fmt.Printf("elephant: next, draft it:  go -C %s run ./cmd/elephant draft\n", s.HarnessPath())
 
 	case "prompt":
 		p, err := prompt(harness, root, s, string(template))
@@ -141,8 +159,8 @@ func main() {
 		fmt.Printf("elephant: %d place(s) are marked (inferred) and %d TODO(elephant): a person answers each.\n",
 			strings.Count(doc, "(inferred)"), strings.Count(doc, "TODO(elephant)"))
 		fmt.Println("elephant: next:")
-		fmt.Println("    go -C harness run ./cmd/check -validate=false       # is every file accounted for, does every named test exist")
-		fmt.Println("    go -C harness run ./cmd/goldfish -only comprehension # can a session with no memory explain the repository from it")
+		fmt.Printf("    go -C %s run ./cmd/check -validate=false       # is every file accounted for, does every named test exist\n", s.HarnessPath())
+		fmt.Printf("    go -C %s run ./cmd/goldfish -only comprehension # can a session with no memory explain the repository from it\n", s.HarnessPath())
 
 	default:
 		usage()
@@ -184,7 +202,8 @@ func replaceable(docPath string, force bool) error {
 }
 
 // prompt is the whole of what a drafting session is given: the instructions,
-// the survey, the shape to fill and the project's rules as they stand.
+// the survey, the shape to fill and, for a repository nested under a root,
+// the root's design.
 func prompt(harness, root string, s Survey, template string) (string, error) {
 	instructions, err := os.ReadFile(filepath.Join(harness, "elephant", "reverse.md"))
 	if err != nil {
@@ -197,6 +216,11 @@ func prompt(harness, root string, s Survey, template string) (string, error) {
 	b.WriteString("\n\n---\n\nThe shape to fill, with the spine as the survey gives it:\n\n````markdown\n")
 	b.WriteString(strings.TrimSpace(strings.ReplaceAll(s.Skeleton(template), SkeletonMark+"\n\n", "")))
 	b.WriteString("\n````\n")
+	if p := s.Parent; p != nil {
+		fmt.Fprintf(b, "\n---\n\nThe design of `%s`, the root this repository is nested under. What it decides binds here: cite it, and do not restate it.\n\n````markdown\n", p.Name)
+		b.WriteString(strings.TrimSpace(p.Doc))
+		b.WriteString("\n````\n")
+	}
 	return b.String(), nil
 }
 

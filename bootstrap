@@ -6,10 +6,20 @@
 #   ./bootstrap /path/to/project            adopt the method there
 #   ./bootstrap --update /path/to/project   replace its harness with this one
 #
-#   --no-hooks   do not install the git hooks
-#   --no-ci      do not write .github/workflows/harness.yml
+#   --standalone  give the project a harness of its own even under a root
+#   --no-hooks    do not install the git hooks
+#   --no-ci       do not write .github/workflows/harness.yml
 #
-# It copies harness/ into the project and then adds only what is missing: a
+# A PROJECT UNDER A ROOT. Where a directory above the project holds both a
+# harness and a design, that directory is a root and the project is one of
+# the repositories nested under it: a service, say, beside the contracts
+# repository the services talk through. Such a project gets no harness of
+# its own. It uses the root's by relative path, its rules say to read the
+# root's first, its skeleton takes the root's commit convention and the
+# sections the root asks of a note, and what the root decided is cited by the
+# root's name. Bootstrap the root first, then each repository inside it.
+#
+# Otherwise it copies harness/ into the project and then adds only what is missing: a
 # design/DESIGN.md whose spine accounts for every file as it stands and whose
 # every section is still a question, the first note under design/changes/,
 # the method's rules in CLAUDE.md, the CI workflow, and the git hooks. It
@@ -22,6 +32,7 @@ set -eu
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
 UPDATE=0
+STANDALONE=0
 HOOKS=1
 CI=1
 TARGET=""
@@ -30,7 +41,8 @@ for arg in "$@"; do
     --update) UPDATE=1 ;;
     --no-hooks) HOOKS=0 ;;
     --no-ci) CI=0 ;;
-    -h|--help) sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --standalone) STANDALONE=1 ;;
+    -h|--help) sed -n '3,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "unknown option: $arg" >&2; exit 2 ;;
     *) [ -z "$TARGET" ] || { echo "one project at a time" >&2; exit 2; }; TARGET="$arg" ;;
   esac
@@ -58,42 +70,85 @@ TODAY="$(date +%Y-%m-%d)"
 echo "bootstrap: $NAME ($T)"
 
 # --------------------------------------------------------------------------
-# The harness: the checker, goldfish, elephant, the push script, the hooks,
-# the templates and the method itself. A copy, so that the project depends on
-# nothing outside itself.
-if [ -e "$T/harness" ]; then
-  [ -f "$T/harness/FRAMEWORK.md" ] || \
-    die "$T/harness exists and is not this harness. The harness lives in harness/ at the root; move what is there first."
-  if [ "$UPDATE" -eq 1 ]; then
-    # The settings are the project's own: its model, its budget.
-    KEEP="$(mktemp -d)"
-    for f in goldfish/goldfish.yaml elephant/elephant.yaml; do
-      [ ! -f "$T/harness/$f" ] || { mkdir -p "$KEEP/$(dirname "$f")"; cp "$T/harness/$f" "$KEEP/$f"; }
-    done
-    rm -rf "$T/harness"
-    cp -R "$SRC/harness" "$T/harness"
-    cp -R "$KEEP/." "$T/harness/"
-    rm -rf "$KEEP"
-    did replaced "harness/ (its settings kept)"
-  else
-    did kept "harness/ (--update replaces it with this one)"
-  fi
-else
-  cp -R "$SRC/harness" "$T/harness"
-  did wrote "harness/"
+# Is the project nested under a root? A root is the nearest directory above it
+# that holds a design and this harness. UP is the way back to it ("..", or
+# "../.." two levels down) and SUB the project's path within it.
+ROOT=""; UP=""; SUB=""
+if [ "$STANDALONE" -eq 0 ] && [ ! -e "$T/harness" ]; then
+  dir="$(dirname "$T")"; up=".."; sub="$(basename "$T")"
+  while :; do
+    if [ -f "$dir/harness/FRAMEWORK.md" ] && [ -f "$dir/harness/go.mod" ] && [ -f "$dir/design/DESIGN.md" ]; then
+      ROOT="$dir"; UP="$up"; SUB="$sub"; break
+    fi
+    [ "$dir" != "/" ] || break
+    sub="$(basename "$dir")/$sub"; up="$up/.."; dir="$(dirname "$dir")"
+  done
 fi
-chmod +x "$T/harness/safe-push" "$T/harness/hooks/pre-push" "$T/harness/hooks/commit-msg" "$T/harness/hooks/install"
+
+if [ -n "$ROOT" ]; then
+  # Nested: the root's harness, by relative path, and no copy.
+  [ "$UPDATE" -eq 0 ] || die "$NAME is nested under $ROOT and has no harness of its own to update; update the root's:  $0 --update $ROOT"
+  H="$ROOT/harness"
+  HREL="$UP/harness"
+  PARENT="$(basename "$(git -C "$ROOT" remote get-url origin 2>/dev/null || echo "$ROOT")" .git)"
+  CLAUDE_TEMPLATE="CLAUDE.nested.md"
+  did nested "under $PARENT: its harness, $HREL, and its rules"
+else
+  # The harness: the checker, goldfish, elephant, the push script, the hooks,
+  # the templates and the method itself. A copy, so that the project depends
+  # on nothing outside itself.
+  H="$T/harness"
+  HREL="harness"
+  PARENT=""
+  CLAUDE_TEMPLATE="CLAUDE.md"
+  if [ -e "$T/harness" ]; then
+    [ -f "$T/harness/FRAMEWORK.md" ] || \
+      die "$T/harness exists and is not this harness. The harness lives in harness/ at the root; move what is there first."
+    if [ "$UPDATE" -eq 1 ]; then
+      # The settings are the project's own: its model, its budget.
+      KEEP="$(mktemp -d)"
+      for f in goldfish/goldfish.yaml elephant/elephant.yaml; do
+        [ ! -f "$T/harness/$f" ] || { mkdir -p "$KEEP/$(dirname "$f")"; cp "$T/harness/$f" "$KEEP/$f"; }
+      done
+      rm -rf "$T/harness"
+      cp -R "$SRC/harness" "$T/harness"
+      cp -R "$KEEP/." "$T/harness/"
+      rm -rf "$KEEP"
+      did replaced "harness/ (its settings kept)"
+    else
+      did kept "harness/ (--update replaces it with this one)"
+    fi
+  else
+    cp -R "$SRC/harness" "$T/harness"
+    did wrote "harness/"
+  fi
+  chmod +x "$T/harness/safe-push" "$T/harness/hooks/pre-push" "$T/harness/hooks/commit-msg" "$T/harness/hooks/install"
+fi
+
+# A nested project's CI checks the root out around it, so it must know where
+# the root is cloned from: GitHub's owner/name, read from the root's origin.
+PARENT_REPO=""
+if [ -n "$ROOT" ]; then
+  PARENT_REPO="$(git -C "$ROOT" remote get-url origin 2>/dev/null | sed -n -e 's#\.git$##' -e 's#^.*github\.com[:/]##p')"
+fi
+
+# What a template says of where things are: the project, the harness, and
+# for a nested project the root.
+fill() {
+  sed -e "s|{{NAME}}|$NAME|g" -e "s|{{HARNESS}}|$HREL|g" -e "s|{{PARENT}}|$PARENT|g" \
+      -e "s|{{UP}}|$UP|g" -e "s|{{PATH}}|$SUB|g" -e "s|{{PARENT_REPO}}|$PARENT_REPO|g" "$1"
+}
 
 # --------------------------------------------------------------------------
 # How an agent works here. A CLAUDE.md that exists keeps every line it has;
 # the method's rules are added after them, once.
 if [ ! -f "$T/CLAUDE.md" ]; then
-  sed "s/{{NAME}}/$NAME/g" "$T/harness/templates/CLAUDE.md" > "$T/CLAUDE.md"
+  fill "$H/templates/$CLAUDE_TEMPLATE" > "$T/CLAUDE.md"
   did wrote "CLAUDE.md"
 elif grep -q 'design-harness:begin' "$T/CLAUDE.md"; then
   did kept "CLAUDE.md"
 else
-  { printf '\n## The design, and how a change lands\n\n'; sed '1,2d' "$T/harness/templates/CLAUDE.md"; } >> "$T/CLAUDE.md"
+  { printf '\n## The design, and how a change lands\n\n'; fill "$H/templates/$CLAUDE_TEMPLATE" | sed '1,2d'; } >> "$T/CLAUDE.md"
   did added "the method's rules, at the end of CLAUDE.md"
 fi
 
@@ -101,9 +156,15 @@ fi
 if [ "$CI" -eq 1 ]; then
   if [ -f "$T/.github/workflows/harness.yml" ]; then
     did kept ".github/workflows/harness.yml"
+  elif [ -n "$ROOT" ] && [ -z "$PARENT_REPO" ]; then
+    did skipped ".github/workflows/harness.yml: $PARENT has no GitHub origin yet for CI to check out. Run this again when it has."
   else
     mkdir -p "$T/.github/workflows"
-    cp "$T/harness/templates/harness.yml" "$T/.github/workflows/harness.yml"
+    if [ -n "$ROOT" ]; then
+      fill "$H/templates/harness.nested.yml" > "$T/.github/workflows/harness.yml"
+    else
+      cp "$H/templates/harness.yml" "$T/.github/workflows/harness.yml"
+    fi
     did wrote ".github/workflows/harness.yml"
   fi
 fi
@@ -116,28 +177,25 @@ mkdir -p "$T/design/changes"
 if [ -f "$T/design/DESIGN.md" ]; then
   did kept "design/DESIGN.md"
 else
-  go -C "$T/harness" run ./cmd/elephant skeleton -root "$T" >/dev/null
+  go -C "$H" run ./cmd/elephant skeleton -root "$T" >/dev/null
   did wrote "design/DESIGN.md (a skeleton)"
-
-  NOTE="design/changes/$TODAY-adopt-the-design.md"
-  if [ -z "$(ls "$T/design/changes" 2>/dev/null)" ]; then
-    sed "s/{{DATE}}/$TODAY/g" "$T/harness/templates/adopt.md" > "$T/$NOTE"
-    did wrote "$NOTE"
-  fi
+  for n in "$T"/design/changes/*-adopt-the-design.md; do
+    [ ! -f "$n" ] || did wrote "design/changes/$(basename "$n")"
+  done
 fi
 
 # --------------------------------------------------------------------------
 if [ "$HOOKS" -eq 1 ]; then
-  if (cd "$T" && harness/hooks/install >/dev/null 2>&1); then
+  if (cd "$T" && "$H/hooks/install" >/dev/null 2>&1); then
     did installed "the pre-push and commit-msg hooks"
   else
-    did skipped "the git hooks: this repository already has hooks. Run harness/hooks/install to see how to keep both."
+    did skipped "the git hooks: this repository already has hooks. Run $HREL/hooks/install to see how to keep both."
   fi
 fi
 
 # --------------------------------------------------------------------------
 echo
-go -C "$T/harness" run ./cmd/check -root "$T" -validate=false || {
+go -C "$H" run ./cmd/check -root "$T" -validate=false || {
   echo
   echo "bootstrap: the checker does not pass yet. Each FAIL above is a file the design"
   echo "           does not account for, or a note without its parts: amend design/DESIGN.md."
@@ -147,6 +205,23 @@ go -C "$T/harness" run ./cmd/check -root "$T" -validate=false || {
   echo "bootstrap: this project has a go.work. The scripts and hooks set GOWORK=off for the"
   echo "           harness; typed by hand, a harness command needs it too, or ./harness in go.work."
 }
+
+if [ -n "$ROOT" ]; then
+  REMOTE="$(git -C "$T" remote get-url origin 2>/dev/null || true)"
+  echo
+  echo "bootstrap: $NAME is nested under $PARENT. Two things there are yours to do, in $ROOT:"
+  echo
+  echo "  1. Put it on the map: under repos: in the frontmatter of design/DESIGN.md,"
+  echo
+  echo "         repos:"
+  echo "           - path: $SUB"
+  echo "             kind: service"
+  [ -z "$REMOTE" ] || echo "             remote: $REMOTE"
+  echo
+  echo "     (kind is the root's own word for it: service, contracts, platform.)"
+  echo
+  echo "  2. Keep its files out of the root's history: add  /$SUB/  to .gitignore."
+fi
 
 cat <<EOF
 
@@ -158,11 +233,11 @@ Next, in $T:
      writes nothing itself; what it could not find it marks (inferred) or
      TODO(elephant):
 
-         go -C harness run ./cmd/elephant draft
+         go -C $HREL run ./cmd/elephant draft
 
      Or hand the same instructions to an agent of your own:
 
-         go -C harness run ./cmd/elephant prompt
+         go -C $HREL run ./cmd/elephant prompt
 
   2. Read design/DESIGN.md, all of it, and answer every mark. This is the
      step that makes it the design. Switch on validate: in its frontmatter
@@ -171,13 +246,13 @@ Next, in $T:
   3. Ask a session with no memory whether it can explain the repository from
      the document alone, and mend what it could not:
 
-         go -C harness run ./cmd/goldfish -only comprehension
+         go -C $HREL run ./cmd/goldfish -only comprehension
 
   4. Commit on a branch and push through the one door:
 
          git checkout -b feat/adopt-the-design
          git add -A && git commit -m "design: this repository has a design, and a machine holds the code to it"
-         harness/safe-push
+         $HREL/safe-push
 
-The method itself is in harness/FRAMEWORK.md.
+The method itself is in $HREL/FRAMEWORK.md.
 EOF
