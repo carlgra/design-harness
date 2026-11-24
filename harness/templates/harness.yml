@@ -1,0 +1,35 @@
+---
+# The required status check for main.
+#
+# Runs what harness/safe-push and the pre-push hook run locally: go vet, the
+# harness's own tests, and the checker, which proves every file is accounted
+# for by design/DESIGN.md and every test it names exists, then runs the
+# design's validate: command. A branch that passes locally passes here.
+#
+# If validate: needs a toolchain other than Go, set it up in a step before
+# "check".
+name: harness
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: harness/go.mod
+
+      - name: vet
+        run: go -C harness vet ./...
+
+      - name: test the harness
+        run: go -C harness test ./...
+
+      - name: check
+        run: go -C harness run ./cmd/check

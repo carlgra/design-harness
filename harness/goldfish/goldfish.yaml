@@ -1,0 +1,11 @@
+# Settings for goldfish, the two questions a fresh session is asked by hand.
+#
+# model: the model that runs the sessions, the same for both and recorded
+#   with each verdict; any name the claude command-line tool accepts.
+# verdict: the prefix of the line a session must end its reply with for the
+#   verdict to be read. The script reads "<prefix> PASS" or "<prefix> FAIL"
+#   and nothing else counts; a reply with no such line is a failure.
+# max-budget-usd: the most one session may spend. 0 means no cap.
+model: claude-fable-5-2
+verdict: "VERDICT:"
+max-budget-usd: 3

@@ -1,0 +1,10 @@
+# Settings for elephant's draft, the one session that reads the repository
+# and drafts its design.
+#
+# model: the model that runs the session; any name the claude command-line
+#   tool accepts.
+# max-budget-usd: the most the session may spend. 0 means no cap. A large
+#   repository needs more than a small one: the session reads before it
+#   writes.
+model: claude-fable-5-2
+max-budget-usd: 15

@@ -1,0 +1,33 @@
+#!/bin/sh
+# A commit's subject is a Conventional Commit, in a repository whose design
+# says `commits: conventional`; this passes everything in one that does not.
+#
+# A changelog can be generated from the subjects on main, so a subject is
+# checked where it is written, not when the push is refused. git's own
+# subjects (a merge, a revert, a fixup) pass.
+#
+# Installed with the pre-push hook by the harness's hooks/install: it acts on
+# the repository it runs in and finds the harness from its own path.
+set -e
+
+# The harness is a module of its own, whatever workspace the project has.
+export GOWORK=off
+
+root="$(git rev-parse --show-toplevel)"
+harness="$(cd "$(dirname "$0")/.." && pwd)"
+
+# git hands the message file relative to the repository's top level.
+case "$1" in
+  /*) msg="$1" ;;
+  *) msg="$root/$1" ;;
+esac
+
+# A repository with no design yet has asked for nothing.
+[ -f "$root/design/DESIGN.md" ] || exit 0
+
+if ! command -v go >/dev/null 2>&1; then
+  echo "harness: the Go toolchain is not installed; the subject cannot be checked" >&2
+  exit 1
+fi
+
+exec go -C "$harness" run ./cmd/subject -root "$root" -file "$msg"

@@ -1,0 +1,41 @@
+#!/bin/sh
+# Last line of defence on every git push.
+#
+# Runs on EVERY push, including one typed by hand or issued by an agent that
+# did not know about harness/safe-push. Two things, and only two:
+#
+#   1. refuse any push to main; nothing reaches it except through a PR
+#   2. refuse the push unless the checker passes
+#
+# It does not create issues or PRs: a hook that reaches out to a server on
+# every push is a hook people disable. Installed by the harness's
+# hooks/install, which points core.hooksPath here by relative path; it acts
+# on the repository it runs in and finds the harness from its own path.
+set -e
+
+# The harness is a module of its own, whatever workspace the project has.
+export GOWORK=off
+
+root="$(git rev-parse --show-toplevel)"
+harness="$(cd "$(dirname "$0")/.." && pwd)"
+
+to_main=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/master) to_main=1 ;;
+  esac
+done
+
+if [ "$to_main" -eq 1 ]; then
+  echo "pre-push: refusing to push to main." >&2
+  echo "          Nothing reaches main except through a pull request." >&2
+  echo "          Push a branch with harness/safe-push instead." >&2
+  exit 1
+fi
+
+if ! command -v go >/dev/null 2>&1; then
+  echo "harness: the Go toolchain is not installed; the checker cannot run" >&2
+  exit 1
+fi
+
+exec go -C "$harness" run ./cmd/check -root "$root"

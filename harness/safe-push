@@ -1,0 +1,343 @@
+#!/bin/sh
+#
+# The only way this repository is pushed.
+#
+# Refuses main, any branch already merged, and any branch that is not a
+# change branch (feat/ or fix/), moving the work to a feat/ or fix/ branch
+# named for it: one branch per change, whatever branch the work began on;
+# requires a clean tree so what was validated is what is pushed; runs the
+# validation CI runs; refuses a pull request title that is not a Conventional
+# Commit, where the design asks for them; pushes with --force-with-lease,
+# never --force; opens the pull request. Blocks on any failure rather than
+# letting a broken branch reach the server and fail minutes later in CI.
+#
+# Usage:  harness/safe-push            push the current branch, open a PR
+#         harness/safe-push --no-pr    push only
+#         harness/safe-push --draft    open the PR as a draft
+#         harness/safe-push --tag v1.2.0 [sub/dir/v1.2.0 ...]
+#                                      cut a release: tag main's tip, as
+#                                      merged, and push the tags
+#
+# A TAG IS A RELEASE: it names a commit that reached main through a pull
+# request. So --tag works only on main, clean, at the same commit as
+# origin/main, with every name new here and on origin; it creates annotated
+# tags at that commit and pushes them, and nothing else. The same door as
+# every other push, so that `git push` is never typed.
+#
+# The pull request is opened on GitHub, through the gh command-line tool.
+# With any other server, push with --no-pr and open it there.
+#
+# It acts on the repository it is run in and finds the harness from its own
+# path, so a repository nested under a shared harness runs ../harness/safe-push.
+#
+# PR_FOOTER, when set in the environment, is appended to the PR body. An agent
+# sets it to its attribution line.
+set -eu
+
+# The harness is a module of its own, whatever workspace the project has.
+export GOWORK=off
+
+HARNESS="$(cd "$(dirname "$0")" && pwd)"
+cd "$(git rev-parse --show-toplevel)"
+
+OPEN_PR=1
+DRAFT=""
+TAGS=""
+TAGGING=0
+for arg in "$@"; do
+  if [ "$TAGGING" = 1 ]; then TAGS="$TAGS $arg"; continue; fi
+  case "$arg" in
+    --no-pr) OPEN_PR=0 ;;
+    --draft) DRAFT="--draft" ;;
+    --tag) TAGGING=1 ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
+die() { printf '\n\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
+step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+
+git remote get-url origin >/dev/null 2>&1 || die "This repository has no origin to push to."
+
+# The branch everything is judged against: origin's default, main unless the
+# remote says otherwise.
+MAIN=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+[ -n "$MAIN" ] || MAIN=main
+
+# --------------------------------------------------------------------------
+if [ "$TAGGING" = 1 ]; then
+  step "Tag"
+  [ -n "$TAGS" ] || die "--tag needs at least one name: safe-push --tag v1.2.0"
+  BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  [ "$BRANCH" = "$MAIN" ] || die "A tag is cut on $MAIN, as merged; this is $BRANCH."
+  [ -z "$(git status --porcelain)" ] || die "The tree is not clean; a tag names exactly what was merged."
+  git fetch --quiet origin "$MAIN" --tags
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$MAIN")" ] || \
+    die "$MAIN is not at origin/$MAIN; pull first, so that the tag names what was merged."
+  for tag in $TAGS; do
+    case "$tag" in
+      v[0-9]*.[0-9]*.[0-9]*|*/v[0-9]*.[0-9]*.[0-9]*) ;;
+      *) die "$tag: a tag is v<major>.<minor>.<patch>, optionally under a directory (sub/dir/v1.2.0)" ;;
+    esac
+    ! git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null 2>&1 || die "$tag already exists here."
+    [ -z "$(git ls-remote --tags origin "refs/tags/$tag")" ] || die "$tag already exists on origin."
+  done
+  for tag in $TAGS; do
+    git tag -a "$tag" -m "$tag: $(git log -1 --format=%s)"
+    echo "  $tag at $(git rev-parse --short HEAD)"
+  done
+  # shellcheck disable=SC2086
+  git push --quiet origin $TAGS
+  step "Done"
+  echo "  pushed:$TAGS"
+  exit 0
+fi
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+[ "$BRANCH" != "HEAD" ] || die "Detached HEAD: check out a branch first."
+
+# --------------------------------------------------------------------------
+step "Branch"
+# origin's main must be current before anything is judged against it, or a
+# branch merged an hour ago still looks like live work.
+git fetch --quiet origin "$MAIN" || die "Could not fetch origin/$MAIN. Is there a $MAIN branch on origin yet?
+The first commit of a new repository is pushed by hand, once; everything after it comes through here."
+
+# Three ways a branch is not fit to push:
+#
+#   main      protected; nothing reaches it except through a pull request.
+#   other     not feat/<what> or fix/<what>: a branch someone else named, such
+#             as the one a cloud session is handed, which is not named for the
+#             change and outlives it.
+#   merged    origin/<branch> is already an ancestor of origin/main, so its PR
+#             landed and new commits on it are invisible until someone notices.
+#
+# The merged test is on the REMOTE ref. The local tip is deliberately not
+# used: adding a commit moves it past main and would make a merged branch
+# look fresh, which is precisely the case that needs catching.
+MIGRATE_REASON=""
+case "$BRANCH" in
+  "$MAIN"|main|master) MIGRATE_REASON="$BRANCH is protected; nothing reaches it except through a pull request" ;;
+  feat/?*|fix/?*) ;;
+  *) MIGRATE_REASON="$BRANCH is not a change branch; each change gets its own feat/ or fix/ branch" ;;
+esac
+if [ -z "$MIGRATE_REASON" ] && git rev-parse --verify --quiet "origin/$BRANCH" >/dev/null 2>&1; then
+  if git merge-base --is-ancestor "origin/$BRANCH" "origin/$MAIN"; then
+    MIGRATE_REASON="origin/$BRANCH has already been merged into $MAIN"
+  fi
+fi
+
+if [ -n "$MIGRATE_REASON" ]; then
+  echo "  $BRANCH: not suitable, $MIGRATE_REASON"
+  OLD_BRANCH="$BRANCH"
+
+  CARRIED=$(git log --oneline "origin/$MAIN..$BRANCH" 2>/dev/null || true)
+  DIRTY=""
+  if [ -n "$(git status --porcelain)" ]; then DIRTY=1; fi
+
+  [ -n "$CARRIED" ] || [ -n "$DIRTY" ] || \
+    die "Nothing to move and nothing to push. Start a branch for the work first."
+
+  # Name the new branch after the work. Oldest commit subject first, because
+  # it is a real sentence; changed top-level paths as the fallback when the
+  # work is still uncommitted. A Conventional Commit's type names the prefix
+  # and is not part of the slug.
+  if [ -n "$CARRIED" ]; then
+    SUBJECT=$(git log --format='%s' "origin/$MAIN..$BRANCH" | tail -1)
+  else
+    SUBJECT=$(git status --porcelain | awk '{print $NF}' | cut -d/ -f1-2 \
+              | sort -u | head -3 | tr '\n' ' ')
+  fi
+  case "$SUBJECT" in
+    fix:*|fix\(*|[Ff]ix\ *|[Cc]orrect*|[Rr]epair*|[Rr]evert*) PREFIX=fix ;;
+    *) PREFIX=feat ;;
+  esac
+  WORDS=$(printf '%s' "$SUBJECT" | sed 's/^[a-z]\{1,\}\(([^)]*)\)\{0,1\}!\{0,1\}: //')
+  # Truncated at a word boundary, not mid-word.
+  SLUG=$(printf '%s' "$WORDS" \
+         | tr '[:upper:]' '[:lower:]' \
+         | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//' \
+         | cut -c1-40 | sed 's/-[a-z0-9]*$//; s/-$//')
+  [ -n "$SLUG" ] || SLUG="work"
+  NEW="$PREFIX/$SLUG"
+  n=2
+  while git rev-parse --verify --quiet "$NEW" >/dev/null 2>&1; do
+    NEW="$PREFIX/$SLUG-$n"; n=$((n + 1))
+  done
+
+  echo "  moving the work to: $NEW"
+  if [ -n "$CARRIED" ]; then
+    echo "  commits to carry:"; echo "$CARRIED" | sed 's/^/    /'
+  fi
+  if [ -n "$DIRTY" ]; then echo "  uncommitted changes will be stashed and restored"; fi
+
+  # Stash BEFORE branching, or the checkout carries the changes along and
+  # they collide with the cherry-pick.
+  if [ -n "$DIRTY" ]; then
+    git stash push --include-untracked --quiet --message "safe-push: moving off $BRANCH"
+  fi
+
+  git checkout --quiet -b "$NEW" "origin/$MAIN"
+  # Verified, not assumed: a checkout that silently does not switch would let
+  # every later step operate on the wrong branch while reporting the right one.
+  [ "$(git rev-parse --abbrev-ref HEAD)" = "$NEW" ] || \
+    die "Failed to switch to $NEW. Aborting before anything is pushed."
+
+  if [ -n "$CARRIED" ]; then
+    if ! git cherry-pick "origin/$MAIN..$OLD_BRANCH" >/dev/null 2>&1; then
+      git cherry-pick --abort 2>/dev/null || true
+      git checkout --quiet "$OLD_BRANCH"
+      if [ -n "$DIRTY" ]; then git stash pop --quiet >/dev/null || true; fi
+      die "Could not replay the commits onto $NEW cleanly. Left on $OLD_BRANCH, nothing pushed."
+    fi
+    echo "  replayed $(echo "$CARRIED" | wc -l | tr -d ' ') commit(s) onto $NEW"
+
+    # Put the branch we left back where its remote is, so the commits do not
+    # also sit on a branch whose PR is closed. The reflog still holds the
+    # old tip either way.
+    if git rev-parse --verify --quiet "origin/$OLD_BRANCH" >/dev/null 2>&1; then
+      git branch -f "$OLD_BRANCH" "origin/$OLD_BRANCH" >/dev/null 2>&1
+      echo "  reset $OLD_BRANCH back to origin/$OLD_BRANCH"
+    fi
+  fi
+
+  if [ -n "$DIRTY" ]; then
+    if ! git stash pop --quiet >/dev/null; then
+      die "Work moved to $NEW, but the stash did not apply cleanly.
+Resolve it, then re-run. Your changes are safe in: git stash list"
+    fi
+    echo "  restored the uncommitted changes"
+  fi
+
+  BRANCH="$NEW"
+  # Stops here when there is still uncommitted work. Inventing a commit
+  # message for someone else's change is worse than asking.
+  if [ -n "$(git status --porcelain)" ]; then
+    printf '\n\033[1mMoved to %s.\033[0m Commit the restored changes, then re-run.\n\n' "$NEW"
+    git status --short
+    exit 0
+  fi
+else
+  echo "  $BRANCH"
+fi
+
+# Uncommitted work means the thing validated is not the thing pushed.
+[ -z "$(git status --porcelain)" ] || die "Working tree is dirty. Commit or stash first:
+$(git status --short)"
+
+COMMITS=$(git log --oneline "origin/$MAIN..$BRANCH" 2>/dev/null || true)
+[ -n "$COMMITS" ] || die "No commits on $BRANCH that are not already on $MAIN. Nothing to push."
+echo "  $(echo "$COMMITS" | wc -l | tr -d ' ') commit(s) ahead of $MAIN:"
+echo "$COMMITS" | sed 's/^/    /'
+
+# --------------------------------------------------------------------------
+step "Merge (against origin/$MAIN as fetched)"
+# Work in several worktrees at once and two branches edit the same part of
+# the design. Each passes the checker on its own and the second conflicts on
+# the server. A dry-run merge here says so first, and names the files.
+# git merge-tree writes no tree to the working copy and touches no branch.
+if CONFLICTS=$(git merge-tree --write-tree --name-only "origin/$MAIN" "$BRANCH" 2>&1); then
+  echo "  merges cleanly into origin/$MAIN"
+else
+  echo "$CONFLICTS" | sed -n '2,$p' | sed 's/^/    /'
+  die "This branch does not merge cleanly into origin/$MAIN (the files above).
+Rebase it first: git rebase origin/$MAIN, resolve, then re-run. Nothing pushed."
+fi
+
+# --------------------------------------------------------------------------
+step "Validation (mirrors .github/workflows/harness.yml)"
+command -v go >/dev/null 2>&1 || die "The Go toolchain is not installed; the checker cannot run."
+go -C "$HARNESS" vet ./... || die "go vet failed. Nothing pushed."
+go -C "$HARNESS" run ./cmd/check || die "The checker failed. Nothing pushed."
+
+# --------------------------------------------------------------------------
+step "Subject"
+# WHAT LANDS ON MAIN IS THE PULL REQUEST'S TITLE, when a pull request is
+# squashed, and a changelog is generated from main's subjects. The title is
+# the subject of the branch's first commit when this opens the pull request,
+# and whatever it has been renamed to once it is open, so that is what is
+# checked, before anything leaves. The check binds a repository whose design
+# says `commits: conventional` and passes in one that does not.
+REPO=$(git remote get-url origin | sed -e 's#^.*github\.com[:/]##' -e 's#\.git$##')
+OWNER=${REPO%%/*}
+SUBJECT=$(git log --format='%s' "origin/$MAIN..$BRANCH" | tail -1)
+OPEN_TITLE=""
+if [ "$OPEN_PR" -eq 1 ]; then
+  command -v gh >/dev/null 2>&1 || die "gh CLI not found; needed to open the pull request. Or push with --no-pr"
+  gh api "repos/$REPO" --silent >/dev/null 2>&1 || \
+    die "GitHub cannot be reached as $REPO through gh. Run: gh auth login, or push with --no-pr"
+  OPEN_TITLE=$(gh api "repos/$REPO/pulls?head=$OWNER:$BRANCH&state=open" --jq '.[0].title // empty' 2>/dev/null || true)
+fi
+if [ -n "$OPEN_TITLE" ]; then
+  go -C "$HARNESS" run ./cmd/subject -title "$OPEN_TITLE" || die "The pull request already open for $BRANCH has a title that is not a Conventional Commit.
+Rename it, then re-run:
+  gh api repos/$REPO/pulls/<number> --method PATCH -f title='type(scope): description'
+Nothing pushed."
+  echo "  $OPEN_TITLE"
+else
+  go -C "$HARNESS" run ./cmd/subject -title "$SUBJECT" || die "The branch's first commit gives the pull request its title, and it is not a Conventional Commit.
+With one commit on the branch:   git commit --amend -m 'type(scope): description'
+With several, fold them into one, as the merge will:
+  git reset --soft origin/$MAIN && git commit -m 'type(scope): description'
+Nothing pushed."
+  echo "  $SUBJECT"
+fi
+
+# --------------------------------------------------------------------------
+step "Push"
+# THE PULL REQUEST IS OPENED OVER GITHUB'S REST API, through `gh api`, the
+# same way wherever this runs. `gh pr` speaks GraphQL, which a cloud coding
+# session's proxy may refuse, and `gh auth status` reports a token a proxy
+# supplies as invalid: neither means GitHub cannot be reached. So the check is
+# the one thing the pull request needs, reading this repository over REST, and
+# it is made before the push (under Subject, above), so that a push which
+# cannot open its pull request fails before anything leaves. --no-pr pushes
+# without it.
+# --force-with-lease permits the rebase a stacked branch needs and refuses if
+# the remote moved since the last fetch, so a push never silently discards a
+# commit. The pre-push hook runs the checker once more on the way out.
+git push --force-with-lease --set-upstream origin "$BRANCH"
+
+# --------------------------------------------------------------------------
+if [ "$OPEN_PR" -eq 0 ]; then
+  step "Done"
+  echo "  pushed $BRANCH (PR skipped)"
+  exit 0
+fi
+
+step "Pull request"
+EXISTING=$(gh api "repos/$REPO/pulls?head=$OWNER:$BRANCH&state=open" --jq '.[0].html_url // empty' 2>/dev/null || true)
+if [ -n "$EXISTING" ]; then
+  echo "  already open: $EXISTING"
+  echo "  (the push above updated it)"
+else
+  PR_BODY=$(git log "origin/$MAIN..$BRANCH" --format='### %s%n%n%b')
+  if [ -n "${PR_FOOTER:-}" ]; then
+    PR_BODY=$(printf '%s\n\n%s\n' "$PR_BODY" "$PR_FOOTER")
+  fi
+  DRAFT_FIELD=false
+  [ -z "$DRAFT" ] || DRAFT_FIELD=true
+  # THE BODY OPENS WITH THE WORKTREE THE WORK IS IN. Several worktrees are open
+  # at once, and a pull request is found again by where its work sits on disk.
+  # It is the body's first line and not the title's end, because the title is
+  # the line a changelog is generated from. In a linked worktree git's own
+  # directory is not the shared one; the main checkout has no name worth
+  # adding.
+  PR_TITLE="$SUBJECT"
+  if [ "$(git rev-parse --absolute-git-dir)" != "$(cd "$(git rev-parse --git-common-dir)" && pwd -P)" ]; then
+    PR_BODY=$(printf 'Worktree: `%s`\n\n%s\n' "$(basename "$(git rev-parse --show-toplevel)")" "$PR_BODY")
+  fi
+  CREATED=$(gh api "repos/$REPO/pulls" --method POST \
+    -f base="$MAIN" \
+    -f head="$BRANCH" \
+    -f title="$PR_TITLE" \
+    -f body="$PR_BODY" \
+    -F draft="$DRAFT_FIELD" \
+    --jq '.html_url') || die "The branch is pushed, but the pull request could not be opened."
+  echo "  opened: $CREATED"
+fi
+
+step "Done"
+echo "  $BRANCH pushed."
+echo
+echo "  A person merges it, once the harness check passes."

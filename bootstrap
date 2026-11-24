@@ -1,0 +1,183 @@
+#!/bin/sh
+#
+# Give a project that already exists a design, and a machine that holds the
+# code to it.
+#
+#   ./bootstrap /path/to/project            adopt the method there
+#   ./bootstrap --update /path/to/project   replace its harness with this one
+#
+#   --no-hooks   do not install the git hooks
+#   --no-ci      do not write .github/workflows/harness.yml
+#
+# It copies harness/ into the project and then adds only what is missing: a
+# design/DESIGN.md whose spine accounts for every file as it stands and whose
+# every section is still a question, the first note under design/changes/,
+# the method's rules in CLAUDE.md, the CI workflow, and the git hooks. It
+# overwrites nothing that exists and commits nothing: what it did is yours to
+# read with git status. When it is done the checker passes, and the next step
+# is the design itself:
+#
+#   cd /path/to/project && go -C harness run ./cmd/elephant draft
+set -eu
+
+SRC="$(cd "$(dirname "$0")" && pwd)"
+UPDATE=0
+HOOKS=1
+CI=1
+TARGET=""
+for arg in "$@"; do
+  case "$arg" in
+    --update) UPDATE=1 ;;
+    --no-hooks) HOOKS=0 ;;
+    --no-ci) CI=0 ;;
+    -h|--help) sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "unknown option: $arg" >&2; exit 2 ;;
+    *) [ -z "$TARGET" ] || { echo "one project at a time" >&2; exit 2; }; TARGET="$arg" ;;
+  esac
+done
+
+die() { printf '\nbootstrap: %s\n' "$*" >&2; exit 1; }
+did() { printf '  %-9s %s\n' "$1" "$2"; }
+
+[ -n "$TARGET" ] || die "name the project: ./bootstrap /path/to/project"
+[ -d "$TARGET" ] || die "$TARGET is not a directory"
+T="$(cd "$TARGET" && pwd -P)"
+[ "$T" != "$(cd "$SRC" && pwd -P)" ] || die "that is this repository; name the project to adopt the method in"
+[ -f "$SRC/harness/FRAMEWORK.md" ] || die "$SRC/harness is not the harness; run bootstrap from its own repository"
+command -v go >/dev/null 2>&1 || die "the Go toolchain is not installed; the harness is Go, and needs it wherever the checker runs"
+command -v git >/dev/null 2>&1 || die "git is not installed"
+[ "$(git -C "$T" rev-parse --show-toplevel 2>/dev/null || true)" = "$T" ] || \
+  die "$T is not the root of a git repository; the method is one design per repository"
+
+# The harness reaches no workspace: it is a module of its own, whatever the
+# project around it is.
+export GOWORK=off
+
+NAME="$(basename "$(git -C "$T" remote get-url origin 2>/dev/null || echo "$T")" .git)"
+TODAY="$(date +%Y-%m-%d)"
+echo "bootstrap: $NAME ($T)"
+
+# --------------------------------------------------------------------------
+# The harness: the checker, goldfish, elephant, the push script, the hooks,
+# the templates and the method itself. A copy, so that the project depends on
+# nothing outside itself.
+if [ -e "$T/harness" ]; then
+  [ -f "$T/harness/FRAMEWORK.md" ] || \
+    die "$T/harness exists and is not this harness. The harness lives in harness/ at the root; move what is there first."
+  if [ "$UPDATE" -eq 1 ]; then
+    # The settings are the project's own: its model, its budget.
+    KEEP="$(mktemp -d)"
+    for f in goldfish/goldfish.yaml elephant/elephant.yaml; do
+      [ ! -f "$T/harness/$f" ] || { mkdir -p "$KEEP/$(dirname "$f")"; cp "$T/harness/$f" "$KEEP/$f"; }
+    done
+    rm -rf "$T/harness"
+    cp -R "$SRC/harness" "$T/harness"
+    cp -R "$KEEP/." "$T/harness/"
+    rm -rf "$KEEP"
+    did replaced "harness/ (its settings kept)"
+  else
+    did kept "harness/ (--update replaces it with this one)"
+  fi
+else
+  cp -R "$SRC/harness" "$T/harness"
+  did wrote "harness/"
+fi
+chmod +x "$T/harness/safe-push" "$T/harness/hooks/pre-push" "$T/harness/hooks/commit-msg" "$T/harness/hooks/install"
+
+# --------------------------------------------------------------------------
+# How an agent works here. A CLAUDE.md that exists keeps every line it has;
+# the method's rules are added after them, once.
+if [ ! -f "$T/CLAUDE.md" ]; then
+  sed "s/{{NAME}}/$NAME/g" "$T/harness/templates/CLAUDE.md" > "$T/CLAUDE.md"
+  did wrote "CLAUDE.md"
+elif grep -q 'design-harness:begin' "$T/CLAUDE.md"; then
+  did kept "CLAUDE.md"
+else
+  { printf '\n## The design, and how a change lands\n\n'; sed '1,2d' "$T/harness/templates/CLAUDE.md"; } >> "$T/CLAUDE.md"
+  did added "the method's rules, at the end of CLAUDE.md"
+fi
+
+# --------------------------------------------------------------------------
+if [ "$CI" -eq 1 ]; then
+  if [ -f "$T/.github/workflows/harness.yml" ]; then
+    did kept ".github/workflows/harness.yml"
+  else
+    mkdir -p "$T/.github/workflows"
+    cp "$T/harness/templates/harness.yml" "$T/.github/workflows/harness.yml"
+    did wrote ".github/workflows/harness.yml"
+  fi
+fi
+
+# --------------------------------------------------------------------------
+# The design, last, so that its spine accounts for everything written above.
+# A skeleton: the spine is filled from a survey of what is there, so the
+# checker passes at once; the body is questions.
+mkdir -p "$T/design/changes"
+if [ -f "$T/design/DESIGN.md" ]; then
+  did kept "design/DESIGN.md"
+else
+  go -C "$T/harness" run ./cmd/elephant skeleton -root "$T" >/dev/null
+  did wrote "design/DESIGN.md (a skeleton)"
+
+  NOTE="design/changes/$TODAY-adopt-the-design.md"
+  if [ -z "$(ls "$T/design/changes" 2>/dev/null)" ]; then
+    sed "s/{{DATE}}/$TODAY/g" "$T/harness/templates/adopt.md" > "$T/$NOTE"
+    did wrote "$NOTE"
+  fi
+fi
+
+# --------------------------------------------------------------------------
+if [ "$HOOKS" -eq 1 ]; then
+  if (cd "$T" && harness/hooks/install >/dev/null 2>&1); then
+    did installed "the pre-push and commit-msg hooks"
+  else
+    did skipped "the git hooks: this repository already has hooks. Run harness/hooks/install to see how to keep both."
+  fi
+fi
+
+# --------------------------------------------------------------------------
+echo
+go -C "$T/harness" run ./cmd/check -root "$T" -validate=false || {
+  echo
+  echo "bootstrap: the checker does not pass yet. Each FAIL above is a file the design"
+  echo "           does not account for, or a note without its parts: amend design/DESIGN.md."
+}
+[ ! -f "$T/go.work" ] || {
+  echo
+  echo "bootstrap: this project has a go.work. The scripts and hooks set GOWORK=off for the"
+  echo "           harness; typed by hand, a harness command needs it too, or ./harness in go.work."
+}
+
+cat <<EOF
+
+bootstrap: done. Nothing is committed; read what changed with:  git -C $T status
+
+Next, in $T:
+
+  1. Draft the design from the code. One session reads the repository and
+     writes nothing itself; what it could not find it marks (inferred) or
+     TODO(elephant):
+
+         go -C harness run ./cmd/elephant draft
+
+     Or hand the same instructions to an agent of your own:
+
+         go -C harness run ./cmd/elephant prompt
+
+  2. Read design/DESIGN.md, all of it, and answer every mark. This is the
+     step that makes it the design. Switch on validate: in its frontmatter
+     when the command it names passes.
+
+  3. Ask a session with no memory whether it can explain the repository from
+     the document alone, and mend what it could not:
+
+         go -C harness run ./cmd/goldfish -only comprehension
+
+  4. Commit on a branch and push through the one door:
+
+         git checkout -b feat/adopt-the-design
+         git add -A && git commit -m "design: this repository has a design, and a machine holds the code to it"
+         harness/safe-push
+
+The method itself is in harness/FRAMEWORK.md.
+EOF

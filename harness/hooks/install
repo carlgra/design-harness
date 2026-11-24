@@ -1,0 +1,52 @@
+#!/bin/sh
+# Run once per clone, so that the checker runs before every push and a
+# commit's subject is checked as it is written. The hooks are the harness's
+# own, pointed at by relative path, which git accepts; so the harness may be
+# this repository's or one above it that several repositories share.
+#
+#   harness/hooks/install           refuses to replace hooks already in use
+#   harness/hooks/install --force   replaces them
+set -e
+
+harness="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(git rev-parse --show-toplevel)"
+
+# The harness's path relative to this repository: "harness" at its root,
+# "../harness" one level down, and so on.
+rel="harness"; dir="$root"
+while [ "$dir" != "$(dirname "$harness")" ]; do
+  parent="$(dirname "$dir")"
+  [ "$parent" != "$dir" ] || { echo "harness: $harness is not in or above $root" >&2; exit 1; }
+  rel="../$rel"; dir="$parent"
+done
+
+# Hooks someone already relies on are not silently switched off: git runs
+# only the hooks core.hooksPath names.
+current="$(git -C "$root" config --get core.hooksPath || true)"
+if [ "${1:-}" != "--force" ] && [ "$current" != "$rel/hooks" ]; then
+  inuse=""
+  if [ -n "$current" ]; then
+    inuse="core.hooksPath is $current"
+  else
+    hooks="$(git -C "$root" rev-parse --git-path hooks)"
+    case "$hooks" in /*) ;; *) hooks="$root/$hooks" ;; esac
+    for h in "$hooks"/*; do
+      [ -f "$h" ] || continue
+      case "$h" in *.sample) ;; *) inuse="$(basename "$h") in .git/hooks" ;; esac
+    done
+  fi
+  if [ -n "$inuse" ]; then
+    echo "harness: this repository already has hooks ($inuse)." >&2
+    echo "         Installing would switch them off. Either call the harness's from yours:" >&2
+    echo "             $rel/hooks/pre-push    (git's stdin and arguments passed through)" >&2
+    echo "             $rel/hooks/commit-msg  \"\$1\"" >&2
+    echo "         or replace yours:  $rel/hooks/install --force" >&2
+    exit 1
+  fi
+fi
+
+git -C "$root" config core.hooksPath "$rel/hooks"
+chmod +x "$harness/hooks/pre-push" "$harness/hooks/commit-msg" "$harness/hooks/install" "$harness/safe-push"
+
+echo "harness: pre-push and commit-msg hooks installed (core.hooksPath = $rel/hooks)"
+echo "harness: push with $rel/safe-push; nothing reaches main except through a pull request"
