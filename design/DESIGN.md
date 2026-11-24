@@ -36,6 +36,13 @@ tests:
   - TestARepositoryUnderARootUsesTheRootsHarnessAndRules
   - TestTheMapIsBroughtInLineWithoutMerging
   - TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects
+  - TestAChangeBranchThatPassesIsPushed
+  - TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed
+  - TestABranchAlreadyMergedIsNotPushedToAgain
+  - TestADirtyTreeIsRefused
+  - TestABranchThatDoesNotMergeCleanlyIsRefused
+  - TestABranchTheCheckerRefusesIsNotPushed
+  - TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks
 # The repository's own gate, run from the root after the checks pass.
 validate: go -C harness vet ./... && go -C harness test ./...
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
@@ -152,7 +159,9 @@ The parts, all under `harness/`:
   not named `feat/` or `fix/`: work it finds on one is moved, commits and uncommitted
   changes both, to a new branch, and that is what is pushed. The new branch is named
   `feat/` or `fix/` and then a slug of the first commit's subject, which is also the
-  pull request's title. It requires a clean tree; checks the branch merges cleanly into
+  pull request's title: the subject without its Conventional Commit type, whole when it
+  is short and cut at a word when it is long. A branch whose remote is already merged
+  into the default branch is treated the same way: new work on it is moved. It requires a clean tree; checks the branch merges cleanly into
   the remote's default branch; runs `go vet` over the harness itself and then the
   checker, which runs the repository's gate; checks the title; pushes with
   `--force-with-lease`; and opens the pull request on GitHub through `gh api`.
@@ -309,8 +318,10 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   every run of the checker, and is not refused for it. *(`test:
   TestAnUnfinishedDesignIsSaidToBeUnfinished`)*
 - **INV-011** — Nothing reaches `main` except through a pull request that passed the
-  checker. *(`harness/hooks/pre-push` and `harness/safe-push` refuse the push; the
-  server's branch protection is read at review)*
+  checker. *(`harness/hooks/pre-push` and `harness/safe-push` refuse the push, `test:
+  TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`, `test:
+  TestABranchTheCheckerRefusesIsNotPushed`; the server's branch protection is read at
+  review)*
 - **INV-012** — Nothing under `harness/` needs anything outside it, or names a
   particular project. One test looks outside: `bootstrap_test.go` looks for `bootstrap`
   beside `harness/`, runs it where it finds it, which is here, and skips where it does
@@ -347,7 +358,6 @@ that due. None is accepted as final.
 | INV-012 | read at review | a test that fails on any `..` path or absolute path in a script, and on a name from a list of project names | the first slip |
 | contracts | the map records which nested repository is of kind `contracts`, and a drafting session is told the definitions live there; nothing checks that a definition names the repository that serves it, or that the server has a test for it | a check, at the root, that reads the contracts repository's definitions and each serving repository's spine | the first project that keeps its definitions in one format the check can read |
 | INV-016 | a nested repository's CI needs a secret that can read a private root, set by hand | none: it is a setting on the server | not due |
-| `safe-push` | exercised by use; no test walks its refusals | a shell test against a throwaway remote: `main` refused, a stray branch moved, a dirty tree refused, a conflict named | the next change to the script |
 
 ## How a change lands
 
@@ -609,6 +619,7 @@ against new rules turns every new rule into an afternoon of editing history.
 | `harness/elephant/` | `reverse.md`, what a drafting session is told; `elephant.yaml`, the model and budget. |
 | `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills, `{{NAME}}`, `{{DATE}}`, `{{FILES}}`, `{{VALIDATE}}`, `{{COMMITS}}`, `{{SECTIONS}}`, `{{REPOS}}` and `{{PARENT}}`; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow; `CLAUDE.nested.md` and `harness.nested.yml`, the same two for a repository under a root (ADR-0009). |
 | `harness/safe-push` | The one door (ADR-0006). |
+| `harness/safe_push_test.go` | Runs the real `safe-push`, without a pull request, against a bare remote it throws away: one test for each thing the script must do or refuse. The only Go file at the module's root. |
 | `harness/hooks/` | `pre-push`, `commit-msg`, and `install`. |
 | `.github/workflows/harness.yml` | This repository's CI: vet, the harness's tests, the checker. A copy of the template. |
 
@@ -638,4 +649,11 @@ Paths a fault would travel, and the test that walks each:
 - a root's skeleton lists every repository found under it — `TestARootsSkeletonCarriesTheMap`
 - a repository under a root is given no second harness, and passes with the root's — `TestARepositoryUnderARootUsesTheRootsHarnessAndRules`
 - a listed repository is cloned or fetched and never merged — `TestTheMapIsBroughtInLineWithoutMerging`
+- a change branch that passes does not reach the remote, or main moves — `TestAChangeBranchThatPassesIsPushed`
+- work on main or a stray branch is pushed where it sits — `TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`
+- new work is pushed to a branch whose pull request has landed — `TestABranchAlreadyMergedIsNotPushedToAgain`
+- what is pushed is not what was validated — `TestADirtyTreeIsRefused`
+- a branch that conflicts with main is pushed and fails on the server — `TestABranchThatDoesNotMergeCleanlyIsRefused`
+- a branch the checker refuses is pushed — `TestABranchTheCheckerRefusesIsNotPushed`
+- a title that is not conventional lands on main where the design asked for them — `TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks`
 - an update leaves a project following old rules, or takes something that was the project's — `TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`

@@ -153,11 +153,14 @@ if [ -n "$MIGRATE_REASON" ]; then
     *) PREFIX=feat ;;
   esac
   WORDS=$(printf '%s' "$SUBJECT" | sed 's/^[a-z]\{1,\}\(([^)]*)\)\{0,1\}!\{0,1\}: //')
-  # Truncated at a word boundary, not mid-word.
   SLUG=$(printf '%s' "$WORDS" \
          | tr '[:upper:]' '[:lower:]' \
-         | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//' \
-         | cut -c1-40 | sed 's/-[a-z0-9]*$//; s/-$//')
+         | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//')
+  # A long one is cut at a word boundary, not mid-word; a short one is kept
+  # whole, last word included.
+  if [ "${#SLUG}" -gt 44 ]; then
+    SLUG=$(printf '%s' "$SLUG" | cut -c1-45 | sed 's/-[a-z0-9]*$//; s/-$//')
+  fi
   [ -n "$SLUG" ] || SLUG="work"
   NEW="$PREFIX/$SLUG"
   n=2
