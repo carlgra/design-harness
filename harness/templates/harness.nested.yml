@@ -1,0 +1,46 @@
+---
+# The required status check for main, in a repository nested under a root.
+#
+# The harness is the root's, so the root is checked out first, at the top of
+# the workspace, and this repository inside it at the path the root's map
+# gives it: `{{HARNESS}}` then resolves exactly as it does on a machine. The
+# checker runs from this repository's directory, as it does there.
+#
+# If the root is private, the default token cannot read it. Give this
+# repository a secret that can, a deploy key or a fine-grained token with read
+# access to the root and nothing else, and name it on the first checkout:
+#     ssh-key: ${{ secrets.ROOT_DEPLOY_KEY }}      or      token: ${{ secrets.ROOT_READ_TOKEN }}
+#
+# If validate: needs a toolchain other than Go, set it up in a step before
+# "check".
+name: harness
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: the root, so that {{HARNESS}} resolves
+        uses: actions/checkout@v4
+        with:
+          repository: {{PARENT_REPO}}
+
+      - name: this repository, where the root's map puts it
+        uses: actions/checkout@v4
+        with:
+          path: {{PATH}}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: harness/go.mod
+
+      - name: vet
+        run: go -C harness vet ./...
+
+      - name: check
+        working-directory: {{PATH}}
+        run: go -C {{HARNESS}} run ./cmd/check

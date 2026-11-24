@@ -52,7 +52,9 @@ harness/hooks/install
   `TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing` runs the real
   `bootstrap` against a throwaway repository and takes a few seconds.
 - A change to `harness/templates/CLAUDE.md` is made to the block between the marks in this
-  file too: this file is that template, filled in.
+  file too: this file is that template, filled in. A change to a rule there is made in
+  `harness/templates/CLAUDE.nested.md` as well, which is the same rules for a repository
+  under a root.
 - The shell scripts are POSIX `sh`, not bash. They run on macOS and Linux as they come.
 - A test is named for the fault it catches, as a sentence, and the design names it.
 - The prompts under `harness/goldfish/` and `harness/elephant/` are code: a change to what

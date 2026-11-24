@@ -36,6 +36,27 @@ one row under `Files`, name none of its tests, and do not spend reading on it;
      `TODO(elephant):` and the question a person must answer.
    A confident guess is the failure. A marked gap is the document working.
 
+## A repository that is one of several
+
+If the survey says the repository is **nested under a root**, the root's design is given
+to you after the shape. What the root decided binds this repository. Do not restate it:
+cite it by the root's name and the id, exactly as the survey shows, wherever this
+repository's code is doing what the root requires, and record here only the decisions and
+invariants that are this repository's own. Keep the paragraph in `Scope` that says where
+it sits. Keep `commits:` and `notes:` as given: they came from the root's spine.
+
+Where the survey lists a sibling of kind `contracts`, the definitions repositories talk
+through live there and not here. Under `How it works`, say which of them this repository
+serves and which it calls, as far as its code shows, naming each as the code names it; if
+you can read the sibling at the path the survey gives, check the names against it, and if
+you cannot, say that you could not.
+
+If the survey says repositories are **nested under this one**, this is a root. Its design
+is about what binds all of them, not about what any one of them does: keep the `repos:`
+map as given, correcting a `kind:` only where a document says what the repository is, and
+add a section `The map` after `Scope` with one row per repository: path, kind, what it is.
+Do not read into the nested repositories beyond what a row needs.
+
 ## What each section holds
 
 **The spine** (the frontmatter). Keep its comments and its `notes:` block as given.
@@ -46,8 +67,8 @@ one row under `Files`, name none of its tests, and do not spend reading on it;
 - `tests:` names the tests that walk a path a fault would travel, the ones you cite under
   `What must always hold` and `Files`. Use only names from the survey's list, spelled
   exactly. A few that matter beat a long list.
-- Leave `validate:` and `commits:` exactly as given, commented or not. They are a
-  person's to switch on.
+- Leave `validate:`, `commits:` and `repos:` exactly as given, commented or not. They
+  are a person's to switch on or change.
 
 **Scope.** What the repository is for, in a paragraph a stranger could repeat. What it
 holds, and what it deliberately does not.

@@ -25,6 +25,7 @@ harness/             everything that is copied into a project
   cmd/goldfish       two sessions with no memory read the design: comprehension, readiness
   cmd/elephant       reverse-engineer the design of existing code: survey, skeleton, draft
   cmd/subject        is a commit's subject a Conventional Commit (optional, per repository)
+  cmd/sync           at a root: clone and fetch the repositories its design lists
   safe-push          the one way a branch is pushed: check, push, open the pull request
   hooks/             pre-push and commit-msg, and their installer
   templates/         the design, a change note, CLAUDE.md, the CI workflow
@@ -73,6 +74,42 @@ To use an agent of your own instead of the headless session, `go -C harness run
 
 Last, protect `main` on the server: require a pull request and the `harness` status check.
 
+## Several repositories: services beside a contracts repository
+
+The usual shape is a project folder that is itself a repository, the root, with each
+domain service checked out inside it as a repository of its own, and a contracts
+repository beside them holding the definitions they talk through.
+
+```
+design-harness/bootstrap ~/code/project             # the root first: it gets the harness
+design-harness/bootstrap ~/code/project/contracts   # then each repository inside it
+design-harness/bootstrap ~/code/project/billing
+```
+
+Bootstrap sees that `billing` sits under a root and adopts it as nested. It copies no
+second harness: `billing` runs the root's as `../harness`. Its `CLAUDE.md` says to read
+the root's rules first, its design skeleton takes the root's commit convention and note
+sections and says how the root's decisions are cited (`project/ADR-0004`), and its CI
+checks the root out around it. The elephant's draft for `billing` is handed the root's
+design, and told that the definitions live in `contracts`. Bootstrap then prints the
+entry to add to the root's map, the `repos:` list in its design:
+
+```yaml
+repos:
+  - path: contracts
+    kind: contracts
+    remote: git@github.com:acme/contracts.git
+  - path: billing
+    kind: service
+    remote: git@github.com:acme/billing.git
+```
+
+With the map in place the root's checker refuses a repository on disk that is not on it,
+a nested repository's checker refuses a citation the root's design does not define, and
+`go -C harness run ./cmd/sync` rebuilds the whole tree on a fresh machine. The root pins
+no commits and uses no submodules. `--standalone` gives a repository under a root a
+harness of its own instead.
+
 ## Use it in a new project
 
 The same command. An empty repository gets a skeleton with nothing to account for yet;
@@ -109,6 +146,8 @@ everything else.
   always right about them; everything else is read by a person.
 - It does not let a model gate a merge, or admit anything. The goldfish advises, the
   elephant proposes, a person decides.
+- It does not check that a definition in a contracts repository has a server and a test.
+  The map records which repository holds the contracts; the check is not written.
 - It does not open pull requests anywhere but GitHub; elsewhere, `harness/safe-push
   --no-pr` pushes and you open it yourself.
 - The headless sessions are Claude's command-line tool. The prompts are plain files

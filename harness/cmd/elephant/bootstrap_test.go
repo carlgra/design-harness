@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -134,5 +135,130 @@ func TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing(t *te
 	}
 	if strings.Count(out, "kept") < 4 {
 		t.Errorf("a second run did not say what it kept:\n%s", out)
+	}
+}
+
+func gitIn(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func run(t *testing.T, name string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GIT_") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %v: %v\n%s", name, args, err, out)
+	}
+	return string(out)
+}
+
+// A repository under a root is given no harness of its own: it uses the
+// root's by relative path, its rules say to read the root's, its spine takes
+// the root's commit convention, its CI checks the root out around it, and it
+// passes the checker run from the root's harness. The root, with the
+// repository now inside it, still passes its own.
+func TestARepositoryUnderARootUsesTheRootsHarnessAndRules(t *testing.T) {
+	script, err := filepath.Abs(filepath.Join("..", "..", "..", "bootstrap"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(script); err != nil {
+		t.Skip("no bootstrap beside this harness: it is a copy in a project")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	root := filepath.Join(tmp, "anything")
+	child := filepath.Join(root, "services", "billing")
+	write := func(p, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The root: a repository that holds what binds all of them.
+	write(filepath.Join(root, "README.md"), "# project\n")
+	write(filepath.Join(root, ".gitignore"), "/services/billing/\n")
+	gitIn(t, root, "init", "-q", "-b", "main")
+	gitIn(t, root, "remote", "add", "origin", "git@github.com:acme/project.git")
+	run(t, "sh", script, root)
+	rootDoc := filepath.Join(root, "design", "DESIGN.md")
+	b, _ := os.ReadFile(rootDoc)
+	write(rootDoc, strings.Replace(string(b), "# commits: conventional", "commits: conventional", 1))
+
+	// A service, checked out inside it.
+	write(filepath.Join(child, "README.md"), "# billing\n")
+	write(filepath.Join(child, "go.mod"), "module billing\n\ngo 1.22\n")
+	write(filepath.Join(child, "main.go"), "package main\n\nfunc main() {}\n")
+	gitIn(t, child, "init", "-q", "-b", "main")
+	gitIn(t, child, "add", "-A")
+	gitIn(t, child, "commit", "-q", "-m", "feat: billing")
+	out := run(t, "sh", script, child)
+
+	if _, err := os.Stat(filepath.Join(child, "harness")); err == nil {
+		t.Fatalf("a repository under a root was given a harness of its own:\n%s", out)
+	}
+	for _, want := range []string{"under project: its harness, ../../harness", "harness: OK", "Put it on the map", "- path: services/billing"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("bootstrap did not say %q:\n%s", want, out)
+		}
+	}
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(child, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	claude := read("CLAUDE.md")
+	for _, want := range []string{"nested under `project`, at `services/billing/`", "`../../CLAUDE.md`", "../../harness/safe-push", "`project/ADR-0004`", "go -C ../../harness run ./cmd/check"} {
+		if !strings.Contains(claude, want) {
+			t.Errorf("the rules do not say %q:\n%s", want, claude)
+		}
+	}
+	doc := read("design/DESIGN.md")
+	for _, want := range []string{"\ncommits: conventional\n", "nested under `project`, at `services/billing/`", "  - main.go\n"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("the skeleton does not hold %q:\n%s", want, doc)
+		}
+	}
+	if strings.Contains(doc, "harness/**") {
+		t.Errorf("the skeleton accounts for a harness the repository does not have:\n%s", doc)
+	}
+	ci := read(".github/workflows/harness.yml")
+	for _, want := range []string{"repository: acme/project", "path: services/billing", "go -C ../../harness run ./cmd/check"} {
+		if !strings.Contains(ci, want) {
+			t.Errorf("the CI workflow does not say %q:\n%s", want, ci)
+		}
+	}
+	for _, f := range []string{"CLAUDE.md", "design/DESIGN.md", ".github/workflows/harness.yml"} {
+		if regexp.MustCompile(`\{\{[A-Z_]+\}\}`).MatchString(read(f)) {
+			t.Errorf("%s has a placeholder left in it", f)
+		}
+	}
+	if got := gitIn(t, child, "config", "--get", "core.hooksPath"); got != "../../harness/hooks" {
+		t.Errorf("core.hooksPath = %q", got)
+	}
+
+	// The root is none the worse for it, and is held to its map once it has one.
+	if out := run(t, "go", "-C", filepath.Join(root, "harness"), "run", "./cmd/check", "-root", root, "-validate=false"); !strings.Contains(out, "harness: OK") {
+		t.Errorf("the root does not pass with a repository nested in it:\n%s", out)
 	}
 }
