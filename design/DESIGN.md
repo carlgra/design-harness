@@ -153,9 +153,12 @@ The parts, all under `harness/`:
   hands it `harness/elephant/reverse.md`, the survey and the shape to fill, and writes
   its reply to `design/DESIGN.md` and to the project's section of `CLAUDE.md`. `prompt`
   prints what that session would be handed. A fifth step, `where`, is for scripts: it
-  prints where a repository sits as `key=value` lines, `root=`, `path=`, and where the
-  root's map lists a contracts repository beside it, `contracts_path=` and
-  `contracts_remote=`; `bootstrap` reads the last two to write a CI workflow. A skeleton is known by one line it carries,
+  prints where a repository sits as `key=value` lines: `root=`, the root's name, which is
+  that of its `origin` or, with none, of its directory; `path=`, this repository's path
+  from the root with forward slashes, `billing` or `services/billing`; and where the
+  root's map lists a contracts repository beside it, `contracts_path=`, its path from
+  the root, and `contracts_remote=`, its remote as the map gives it. Under no root it
+  prints nothing. `bootstrap` reads the last two to write a CI workflow. A skeleton is known by one line it carries,
   the comment `<!-- elephant:skeleton -->`; a draft does not carry it, so once a draft
   is written the document counts as someone's and a second draft needs `-force`. The
   project's section of `CLAUDE.md` is what lies between the comments
@@ -231,8 +234,11 @@ root's found on disk is not looked up.
   map lists a repository of kind `contracts` (ADR-0010). A definition is an RPC, or a
   field of a top-level message whose name ends `Request`, fields in a `oneof` included
   and those of a message nested inside it not, in a `.proto` file a person wrote: any
-  that is not under `gen/`, `vendor/` or `node_modules/`; its name is package, service or message, and RPC or field, joined by dots:
+  that is not under `gen/` at the top of the repository, nor under a directory named
+  `vendor` or `node_modules` at any depth; its name is package, service or message, and RPC or field, joined by dots:
   `billing.v1.BillingService.CreateInvoice`, `billing.v1.CreateInvoiceRequest.currency`.
+  A file with no `package` line names its definitions without one:
+  `BillingService.CreateInvoice`.
 
   In the contracts repository, every note the rules bind carries a fenced block whose
   info string is `servers`: a YAML list of the definitions the change adds, each with
@@ -257,7 +263,8 @@ root's found on disk is not looked up.
   caller is refused, and so is one whose server or caller has left the map. A note may
   have several blocks and a name may be listed in more than one note; all are read, and
   in the server each entry that names it binds. A repository the map marks planned is
-  on the map, and may be named as a server or a caller. The merged state is the remote's
+  on the map, and may be named as a server or a caller. A server may be listed among
+  its own callers. The merged state is the remote's
   default branch as last fetched: `origin/HEAD`, else `origin/main`, else
   `origin/master`. In the contracts repository, where there is a remote and none of
   those is present, the checker refuses and says how to set one, since reading a branch
@@ -291,7 +298,11 @@ root's found on disk is not looked up.
   repository that is not checked out is a refusal, not a skip, in a repository that
   must read it. At a root, and under a root with no contracts repository, none of this
   applies; a contracts repository the map marks `status: planned` is no contracts
-  repository yet, and where a map lists two the first is the one.
+  repository yet, and where a map lists more than one the first that is not planned is
+  the one. A repository under the root that the map does not list yet is held as a
+  server: it must be able to read the contracts repository, and no entry binds it until
+  the map lists it, since an entry naming a server off the map is refused in the
+  contracts repository.
 
   The root's map is read at check time for this and for nothing else: to find which
   repository is which. No rule is taken from the root's spine when a nested repository
@@ -344,7 +355,10 @@ history, so that what a branch adds is read against what is merged, and the cont
 repository beside it where the root's map lists one with a GitHub remote; where it
 lists one with no such remote bootstrap says the workflow cannot check it out, and the
 checker refuses in CI until a person adds the step. A private contracts repository
-needs a secret of its own, set by hand like the root's. It checks
+needs a secret of its own, set by hand like the root's. The harness fixes no name for
+either: the workflow's comment suggests `ROOT_READ_TOKEN` or `ROOT_DEPLOY_KEY` for the
+root and `CONTRACTS_READ_TOKEN` or `CONTRACTS_DEPLOY_KEY` for the contracts
+repository, and a person names the one they set on its checkout step. It checks
 out the root's default branch, by the
 owner and name read from the root's `origin` when bootstrap ran; the secret a private
 root needs is named in the workflow's comment and set by a person. A root is bootstrapped first, then each repository in it.
