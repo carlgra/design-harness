@@ -15,6 +15,86 @@ What it cannot do, the document does not say.
 Everyone who arrives later, a new colleague or tomorrow's agent session, is a goldfish.
 The method is a way of making sure the elephant remembered what they will need.
 
+## What a project looks like once it has adopted this
+
+**One repository.** The design is one file, and the top of that file is the part a
+machine reads:
+
+```
+your-project/
+  design/
+    DESIGN.md          the design of this repository: its spine, its rules, its decisions
+    changes/           one short note per change: problem, plan, alternatives, files
+  harness/             the checker, the scripts and the hooks, copied in
+  CLAUDE.md            the method's rules for an agent, then the project's own
+  src/ ...             the code, every file of it under a path the spine lists
+```
+
+`design/DESIGN.md` has two parts.
+
+- **The spine** is its YAML frontmatter: which paths hold the code, which tests must
+  exist, the command that is the repository's own gate. The checker reads it and refuses
+  a push in which a source file is under no path it lists, or a test it names does not
+  exist.
+
+  ```yaml
+  ---
+  files:
+    - src/**
+    - package.json
+  tests:
+    - TestAnEmptyCartIsRefused
+  validate: npm test
+  ---
+  ```
+
+- **The body** is the rules for that repository, for people and for agents: what it is
+  for, how it works, and then
+
+  - *What must always hold*: the invariants, each with an id it keeps for life and what
+    proves it.
+
+    ```
+    - **INV-004** — An empty cart is refused at checkout, never charged.
+      *(test: TestAnEmptyCartIsRefused)*
+    ```
+
+  - *Decisions*: each one in force, `ADR-0007` and so on, with its reason and what was
+    rejected.
+  - *What no machine proves yet*: every rule that is still held only by a person
+    reading, and what would prove it.
+
+**Several repositories.** Each component is a repository of its own, with its own
+`design/DESIGN.md`: its own spine and its own rules. They are checked out side by side
+inside a project folder, the root, which is a repository too and holds what binds all of
+them. The definitions they talk through, gRPC with protobuf, live in one repository
+beside them and nowhere else.
+
+```
+project/                     the root: a repository
+  design/DESIGN.md           the rules every repository below is bound by, and the map of them
+  harness/                   the one harness; each repository below runs it as ../harness
+  contracts/                 a repository: the definitions between components
+    design/DESIGN.md         its spine and rules
+    design/changes/          a note per change, naming who serves each new RPC or field
+    billing/v1/billing.proto
+    ledger/v1/ledger.proto
+  billing/                   a repository: one component
+    design/DESIGN.md         its spine and rules; cites the root's as project/ADR-0004
+    design/changes/
+    ...
+  ledger/                    a repository: another
+    design/DESIGN.md
+    ...
+```
+
+A rule that binds one component is in that component's design. A rule that binds all of
+them is in the root's, and is cited from the others, not copied. An interface between
+two components is a definition in `contracts`, and the checker holds each one to having
+a component that serves it and a test there that proves it. How to set this up is under
+[Several repositories](#several-repositories-services-beside-a-contracts-repository)
+below.
+
 ## What is here
 
 ```
