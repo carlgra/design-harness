@@ -35,6 +35,20 @@ tests:
   - TestARootsSkeletonCarriesTheMap
   - TestARepositoryUnderARootUsesTheRootsHarnessAndRules
   - TestTheMapIsBroughtInLineWithoutMerging
+  - TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects
+  - TestAChangeBranchThatPassesIsPushed
+  - TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed
+  - TestABranchAlreadyMergedIsNotPushedToAgain
+  - TestADirtyTreeIsRefused
+  - TestABranchThatDoesNotMergeCleanlyIsRefused
+  - TestABranchTheCheckerRefusesIsNotPushed
+  - TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks
+  - TestTheProtoScanFindsRPCsAndRequestFields
+  - TestTheServersBlockIsReadFromItsFence
+  - TestARepositorysRoleIsReadFromTheRootsMap
+  - TestANewDefinitionIsListedWithItsServer
+  - TestAListedDefinitionIsRefusedUntilItsServerNamesATest
+  - TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges
 # The repository's own gate, run from the root after the checks pass.
 validate: go -C harness vet ./... && go -C harness test ./...
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
@@ -108,7 +122,9 @@ The parts, all under `harness/`:
   by its name: `_test.go`,
   `test_*.py` or `*_test.py`, `.test.` or `.spec.` in a JavaScript or TypeScript name,
   and the like for Rust, Java, Kotlin and Ruby. Every command starts here.
-- `cmd/check`, the checker, loads the design and refuses four things: a file under no
+- `cmd/check`, the checker, loads the design and refuses, in every repository, four
+  things, and under a root three more that are described further down, the map, a
+  citation of the root's, and the contracts rules: a file under no
   glob in `files:`; a name in `tests:` that appears in no test file the design accounts
   for; a decision or invariant id defined twice, or cited and defined nowhere; and a
   change note, dated from `notes: from:`, that lacks a section or leaves one empty.
@@ -136,7 +152,13 @@ The parts, all under `harness/`:
   in the repository with the tools that read, `Read`, `Grep` and `Glob`, and no other,
   hands it `harness/elephant/reverse.md`, the survey and the shape to fill, and writes
   its reply to `design/DESIGN.md` and to the project's section of `CLAUDE.md`. `prompt`
-  prints what that session would be handed. A skeleton is known by one line it carries,
+  prints what that session would be handed. A fifth step, `where`, is for scripts: it
+  prints where a repository sits as `key=value` lines: `root=`, the root's name, which is
+  that of its `origin` or, with none, of its directory; `path=`, this repository's path
+  from the root with forward slashes, `billing` or `services/billing`; and where the
+  root's map lists a contracts repository beside it, `contracts_path=`, its path from
+  the root, and `contracts_remote=`, its remote as the map gives it. Under no root it
+  prints nothing. `bootstrap` reads the last two to write a CI workflow. A skeleton is known by one line it carries,
   the comment `<!-- elephant:skeleton -->`; a draft does not carry it, so once a draft
   is written the document counts as someone's and a second draft needs `-force`. The
   project's section of `CLAUDE.md` is what lies between the comments
@@ -151,7 +173,10 @@ The parts, all under `harness/`:
   not named `feat/` or `fix/`: work it finds on one is moved, commits and uncommitted
   changes both, to a new branch, and that is what is pushed. The new branch is named
   `feat/` or `fix/` and then a slug of the first commit's subject, which is also the
-  pull request's title. It requires a clean tree; checks the branch merges cleanly into
+  pull request's title: the subject without its Conventional Commit type, whole when it
+  is short and cut at a word when it is long. It is `fix/` when the subject opens with
+  `fix`, or with Fix, Correct, Repair or Revert, and `feat/` otherwise. A branch whose remote is already merged
+  into the default branch is treated the same way: new work on it is moved. It requires a clean tree; checks the branch merges cleanly into
   the remote's default branch; runs `go vet` over the harness itself and then the
   checker, which runs the repository's gate; checks the title; pushes with
   `--force-with-lease`; and opens the pull request on GitHub through `gh api`.
@@ -166,8 +191,8 @@ its own, checked out side by side inside a project folder, with a contracts repo
 beside them holding the definitions they talk through. The project folder is itself a
 repository, the root. Its design holds what binds all of them, and its spine lists them
 under `repos:`, the map. An entry is a `path:` relative to the root; a `kind:` in the
-root's own words (service, contracts, platform), which nothing in the harness gives
-meaning to yet; a `remote:` it is cloned from, left out for one that is local only; and
+root's own words (service, platform), of which the harness gives meaning to one,
+`contracts`, the repository that holds the definitions the others talk through; a `remote:` it is cloned from, left out for one that is local only; and
 `status: planned` for one that is decided and does not exist yet:
 
 ```yaml
@@ -205,11 +230,90 @@ root's found on disk is not looked up.
   it. In a nested repository it follows a citation
   qualified by the root's name into the root's design, and refuses one not defined
   there.
+- The checker holds a definition to having someone who serves it, where the root's
+  map lists a repository of kind `contracts` (ADR-0010). A definition is an RPC, or a
+  field of a top-level message whose name ends `Request`, fields in a `oneof` included
+  and those of a message nested inside it not, in a `.proto` file a person wrote: any
+  that is not under `gen/` at the top of the repository, nor under a directory named
+  `vendor` or `node_modules` at any depth; its name is package, service or message, and RPC or field, joined by dots:
+  `billing.v1.BillingService.CreateInvoice`, `billing.v1.CreateInvoiceRequest.currency`.
+  A file with no `package` line names its definitions without one:
+  `BillingService.CreateInvoice`.
+
+  In the contracts repository, every note the rules bind carries a fenced block whose
+  info string is `servers`: a YAML list of the definitions the change adds, each with
+  the repository that serves it and the ones that call it, by their paths on the
+  root's map, or `[]` when it adds none.
+
+  ````
+  ```servers
+  - name: billing.v1.CreateInvoiceRequest.currency
+    server: billing
+    callers: [ledger]
+  ```
+  ````
+
+  The checker refuses a bound note with no block, an entry whose server or caller is
+  not on the map or that names no caller, and any RPC or request field the working
+  tree has that the merged state does not and no note lists. A field is new only when
+  its request message already exists at the merged state: the fields of a request
+  message that is itself new are never listed one by one, whether or not an RPC takes
+  it yet, because the RPC that comes to take it is listed. Every entry of every note is
+  validated, whatever the note's date: an entry with no `name:`, no `server:` or no
+  caller is refused, and so is one whose server or caller has left the map. A note may
+  have several blocks and a name may be listed in more than one note; all are read, and
+  in the server each entry that names it binds. A repository the map marks planned is
+  on the map, and may be named as a server or a caller. A server may be listed among
+  its own callers. The merged state is the remote's
+  default branch as last fetched: `origin/HEAD`, else `origin/main`, else
+  `origin/master`. In the contracts repository, where there is a remote and none of
+  those is present, the checker refuses and says how to set one, since reading a branch
+  against itself would pass everything; a repository with no remote at all has merged
+  nothing anywhere and is read against its own `HEAD`. A server reading the contracts
+  repository beside it falls back to that checkout's `HEAD`, which in CI is the default
+  branch and on a machine may bind it to an entry not yet merged, never to fewer.
+
+  In every other repository under that root, the checker reads the contracts
+  repository's notes and definitions at its merged state, and for each entry naming
+  this repository as server whose name a merged definition declares, requires an item
+  under `serves:` in this repository's spine with a `test:`, and requires every test
+  `serves:` names to exist:
+
+  ```yaml
+  serves:
+    - name: billing.v1.CreateInvoiceRequest.currency
+      test: TestAnInvoiceIsIssuedInItsCurrency
+  ```
+
+  A block inside an HTML comment, as the note template shows one, or quoted inside
+  a longer fence, is not a block and lists nothing. A malformed block, one never
+  closed or not a list, is refused where it is read, in the contracts repository and
+  in every server that reads its notes, and never taken for an empty one; whether an
+  entry's server and callers are on the map is checked in the contracts repository
+  only, so one repository never goes red for the wording of another's note. Every note of the contracts repository is read for
+  entries, whatever its date; only the requirement that a note has a block follows
+  `notes: from:`. An entry in a note whose definition has not merged binds nothing: it
+  is a design.
+  An entry on an unmerged branch of the contracts repository binds nothing. A contracts
+  repository that is not checked out is a refusal, not a skip, in a repository that
+  must read it. At a root, and under a root with no contracts repository, none of this
+  applies; a contracts repository the map marks `status: planned` is no contracts
+  repository yet, and where a map lists more than one the first that is not planned is
+  the one. A repository under the root that the map does not list yet is held as a
+  server: it must be able to read the contracts repository, and no entry binds it until
+  the map lists it, since an entry naming a server off the map is refused in the
+  contracts repository.
+
+  The root's map is read at check time for this and for nothing else: to find which
+  repository is which. No rule is taken from the root's spine when a nested repository
+  is checked (INV-016).
 - `cmd/elephant`, in a nested repository, says in the survey where it sits and which
   siblings the root lists; writes a skeleton whose spine takes the root's `commits:`
   and the sections the root asks of a note, and whose scope says how the root is cited;
   and hands a drafting session the root's design after the shape, to cite and not
-  restate. The first note it writes carries every section that spine asks for, since
+  restate. It is not handed the contracts repository's entries: it is told where the
+  sibling is and reads it with the tools it has, and says so if it cannot. The first
+  note it writes carries every section that spine asks for, since
   the note is dated the day the rules begin. At a root it writes the map into the
   skeleton from the repositories it
   finds, with a kind read from each one's name: `contracts` for one called
@@ -221,9 +325,13 @@ root's found on disk is not looked up.
 that exists, the CI workflow, then the skeleton and the first note, then installs the
 hooks, and runs the checker. Each of those is skipped when the thing is already there,
 and a `harness/` directory that is not this harness stops it before anything is
-written. `--update` is the one thing that replaces: it swaps a project's `harness/`
-for this one, whole, keeping only the project's two settings files,
-`goldfish/goldfish.yaml` and `elephant/elephant.yaml`. A change a project made to its
+written. `--update` is the one thing that replaces, and it replaces what is the
+harness's: it swaps a project's `harness/` for this one, whole, keeping only the
+project's two settings files, `goldfish/goldfish.yaml` and `elephant/elephant.yaml`;
+and it rewrites the method's rules in `CLAUDE.md`, the lines between their two marks,
+from the current template, leaving every line outside the marks as it was. In a
+repository nested under a root there is no harness to swap, so `--update` there
+rewrites the rules alone, from the root's templates. A change a project made to its
 own copy is lost from the working tree by that and shows in `git diff`, where the
 person updating decides what to keep.
 
@@ -236,7 +344,22 @@ path; and prints the entry for the root's map and the line for its `.gitignore`,
 are the root's files and a person's to change. `--standalone` gives such a repository
 a copy of its own instead; it is still a repository under the root: it belongs on the
 map, its skeleton takes the root's rules the same way, and its citations of the root
-are followed. The nested CI workflow checks out the root's default branch, by the
+are followed. The first note bootstrap writes in a contracts repository carries an
+empty `servers` block; the repository is known for one by its kind on the root's map,
+or, adopted before the map lists it, by its name. A repository adopted when merged
+contracts already name it as a server is refused by the checker from its first run,
+for each definition it has no test named for: bootstrap prints the refusals and
+finishes, and they are the first thing its design has to answer. That is the one case
+in which a project bootstrap has run on does not pass (INV-009). The nested CI workflow checks out this repository with its whole
+history, so that what a branch adds is read against what is merged, and the contracts
+repository beside it where the root's map lists one with a GitHub remote; where it
+lists one with no such remote bootstrap says the workflow cannot check it out, and the
+checker refuses in CI until a person adds the step. A private contracts repository
+needs a secret of its own, set by hand like the root's. The harness fixes no name for
+either: the workflow's comment suggests `ROOT_READ_TOKEN` or `ROOT_DEPLOY_KEY` for the
+root and `CONTRACTS_READ_TOKEN` or `CONTRACTS_DEPLOY_KEY` for the contracts
+repository, and a person names the one they set on its checkout step. It checks
+out the root's default branch, by the
 owner and name read from the root's `origin` when bootstrap ran; the secret a private
 root needs is named in the workflow's comment and set by a person. A root is bootstrapped first, then each repository in it.
 
@@ -287,7 +410,8 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   TestADraftIsReadAsTheDesignAndTheRules`)*
 - **INV-008** — A survey and a skeleton decide nothing: the spine a skeleton writes
   accounts for every file as it stands, names no test, asks of a note the four default
-  sections from the day it is written, and leaves the gate and the commit convention as
+  sections from the day it is written, or under a root the sections the root asks
+  (INV-016), and leaves the gate and the commit convention as
   comments. The convention is written switched on in two cases only: the history
   already follows it, or the repository is nested under a root whose spine asks for it,
   which is the root's decision and not the skeleton's (INV-016). *(`test: TestTheSurveySaysWhatIsThereAndDecidesNothing`, `test:
@@ -295,15 +419,21 @@ root needs is named in the workflow's comment and set by a person. A root is boo
 - **INV-009** — Adopting with bootstrap overwrites nothing that exists, adding to the
   end of a `CLAUDE.md` that is already there and leaving every line of it as it was,
   and commits nothing; and a project it has run on passes the checker with its own copy of the
-  harness alone, or, adopted under a root, with the root's and no copy (INV-016). With `--update`, and only then, it replaces `harness/`, and nothing
-  else.
-  *(`test: TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`)*
+  harness alone, or, adopted under a root, with the root's and no copy (INV-016); the
+  one exception is a repository merged contracts already name as a server, which is
+  refused until it names its tests (INV-018). With `--update`, and only then, it replaces what is the harness's:
+  `harness/`, less the project's two settings files, and the method's rules between
+  their marks in `CLAUDE.md`; and nothing else.
+  *(`test: TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`,
+  `test: TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`)*
 - **INV-010** — A design that still says `TODO(elephant)` is reported as unfinished on
   every run of the checker, and is not refused for it. *(`test:
   TestAnUnfinishedDesignIsSaidToBeUnfinished`)*
 - **INV-011** — Nothing reaches `main` except through a pull request that passed the
-  checker. *(`harness/hooks/pre-push` and `harness/safe-push` refuse the push; the
-  server's branch protection is read at review)*
+  checker. *(`harness/hooks/pre-push` and `harness/safe-push` refuse the push, `test:
+  TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`, `test:
+  TestABranchTheCheckerRefusesIsNotPushed`; the server's branch protection is read at
+  review)*
 - **INV-012** — Nothing under `harness/` needs anything outside it, or names a
   particular project. One test looks outside: `bootstrap_test.go` looks for `bootstrap`
   beside `harness/`, runs it where it finds it, which is here, and skips where it does
@@ -321,12 +451,28 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   name is defined in the root's design. *(`test:
   TestACitationOfTheRootLandsInTheRootsDesign`)*
 - **INV-016** — A repository adopted under a root has no harness of its own and points
-  at the root's by relative path; the rules it takes from the root's spine, the commit
-  convention and the sections of a note, are written into its own, and nothing is read
-  from the root's spine when it is checked. *(`test:
+  at the root's by relative path, unless it was adopted with `--standalone`; either
+  way the rules it takes from the root's spine, the commit convention and the sections
+  of a note, are written into its own, and no rule is read from the root's spine when
+  it is checked. What is read from the root then is its map, to find which repository
+  is which, and its design, to follow a citation. *(`test:
   TestARepositoryUnderARootUsesTheRootsHarnessAndRules`, `test:
   TestANestedRepositoryTakesItsRulesFromTheRoot`, `test:
   TestARootsSkeletonCarriesTheMap`)*
+
+- **INV-017** — In a contracts repository, every RPC and every field added to an
+  existing request message is listed in a change note with the repository that serves
+  it and at least one that calls it, each on the root's map; and every note the rules
+  bind says what it adds, or that it adds nothing. *(`test:
+  TestANewDefinitionIsListedWithItsServer`, `test:
+  TestTheServersBlockIsReadFromItsFence`, `test:
+  TestTheProtoScanFindsRPCsAndRequestFields`)*
+- **INV-018** — A repository the contracts repository names as serving a definition
+  names, under `serves:`, a test that exists for it. A name binds from the moment a
+  merged definition declares it, and not before. A contracts repository that cannot be
+  read is a refusal. *(`test: TestAListedDefinitionIsRefusedUntilItsServerNamesATest`,
+  `test: TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges`, `test:
+  TestARepositorysRoleIsReadFromTheRootsMap`)*
 
 ## What no machine proves yet
 
@@ -338,10 +484,10 @@ that due. None is accepted as final.
 | INV-005 | the command hands a session only the prompt, the design and for readiness the change, and runs it away from the project; the `claude` tool may still load a person's own global instructions and memory into it | a start-up mode of the tool that loads nothing and still uses the stored login, named in `internal/session`, with the test extended to pin it | the tool offering one |
 | INV-011 | the hook and the push script refuse a push to `main`; protection on the server is set by hand and nothing re-reads it | the checker reads the repository's protection through `gh api` and fails if the pull request requirement or the `harness` check is off | the first project that asks for it |
 | INV-012 | read at review | a test that fails on any `..` path or absolute path in a script, and on a name from a list of project names | the first slip |
-| contracts | the map records which nested repository is of kind `contracts`, and a drafting session is told the definitions live there; nothing checks that a definition names the repository that serves it, or that the server has a test for it | a check, at the root, that reads the contracts repository's definitions and each serving repository's spine | the first project that keeps its definitions in one format the check can read |
+| INV-017 | definitions are read from protobuf only; a contracts repository in another format, OpenAPI or JSON Schema, has its notes held to the block and nothing scanned | a scan per format, behind the same two rules | the first project whose contracts are not protobuf |
+| INV-017 | a contracts repository whose default branch is neither `main` nor `master`, checked out without `origin/HEAD`, as a CI checkout is, is refused until a step sets it | the workflow template sets it after checkout | the first such repository |
+| INV-018 | the test a server names is proved to exist, not to exercise the definition | none a machine can give: it is read at review | not due |
 | INV-016 | a nested repository's CI needs a secret that can read a private root, set by hand | none: it is a setting on the server | not due |
-| the rules in `CLAUDE.md` | written once, at adoption, from the template; `--update` replaces `harness/` and does not touch them, so a rule changed in the template reaches a project only when someone copies it | `--update` rewrites what lies between the method's two marks and nothing outside them | the first change to a rule in the template |
-| `safe-push` | exercised by use; no test walks its refusals | a shell test against a throwaway remote: `main` refused, a stray branch moved, a dirty tree refused, a conflict named | the next change to the script |
 
 ## How a change lands
 
@@ -442,7 +588,7 @@ could not know at all is written `TODO(elephant)` with the question, and alterna
 recorded nowhere are written `Not recorded. TODO(elephant)` rather than invented. A draft is written only over a skeleton; a design a
 person has edited is replaced only with `-force`. The gate and the commit convention
 are never switched on by a survey, the convention excepted when the history already
-follows it. The model and budget are values in `harness/elephant/elephant.yaml`; what
+follows it or, under a root, when the root's spine asks for it (INV-008). The model and budget are values in `harness/elephant/elephant.yaml`; what
 the session is told is `harness/elephant/reverse.md`.
 
 A wrong draft is faster to correct than a blank page is to fill, so the draft is worth
@@ -584,6 +730,42 @@ against new rules turns every new rule into an afternoon of editing history.
 - **Require a new decision for every change.** Most changes are within the decisions in
   force; a record for each buries the ones that decide something.
 
+### ADR-0010 — A definition names the repository that serves it, and the server names its test
+
+Where a root keeps a contracts repository, a new RPC or request field is not finished
+when its definition merges. The note that adds it names the repository that serves it
+and the ones that call it, and from the moment the definition is merged the serving
+repository's checker refuses until its design names a test for it. The two halves are
+checked where each is owned: the listing in the contracts repository, the test in the
+server.
+
+The fault this exists for is a definition that merges, is generated into every
+client, is called, and is served by nobody, or is accepted by a server that ignores
+the new field. Each repository's own checks pass throughout; only the pair of them is
+wrong. A request field is held to this and a response field is not, because a server
+that ignores a request field changes what a caller asked for, while a response field
+nobody fills is visible to the first caller that reads it.
+
+What is merged binds, and nothing else: a name in a note with no definition is a
+design, and a branch of the contracts repository is a proposal. So a server is never
+held to something that may not land, and a definition and its server can be built in
+either order.
+
+#### Alternatives rejected
+
+- **A registry of who serves what, kept at the root.** A third place to keep in step
+  with the definition and the server, changed in a third pull request.
+- **An annotation in the definition itself**, an option naming the server. It ties the
+  check to one format and puts a deployment fact into an interface.
+- **Bind the server from the note alone**, before the definition merges. A server would
+  be refused for a field that does not exist yet and might never.
+- **Skip the check when the contracts repository is not on disk.** In CI that is every
+  run of a workflow someone forgot to extend, and a check that is silently skipped is
+  believed.
+- **Require a test that calls the definition by name.** Nothing can tell that from a
+  test that merely mentions it; the name of the test is proved, and what it walks is
+  read at review.
+
 ## Files
 
 | File | Purpose |
@@ -594,15 +776,16 @@ against new rules turns every new rule into an afternoon of editing history.
 | `harness/internal/design/` | Reads the spine, walks the repository, finds the root and the harness, matches globs, recognises test files. |
 | `harness/internal/session/` | Starts a model session through the `claude` tool with exactly the tools it is given; reads a settings file. |
 | `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007). |
-| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests and ids; `notes.go` the notes; `main.go` runs them and then `validate:`. |
+| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. |
 | `harness/cmd/goldfish/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. |
-| `harness/cmd/elephant/` | Reverse-engineering (ADR-0004): `survey.go` is the survey and the skeleton; `main.go` the four steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. |
+| `harness/cmd/elephant/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
 | `harness/goldfish/` | `comprehension.md` and `readiness.md`, the two prompts; `goldfish.yaml`, the model, verdict prefix and budget. |
-| `harness/elephant/` | `reverse.md`, what a drafting session is told; `elephant.yaml`, the model and budget. |
-| `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills, `{{NAME}}`, `{{DATE}}`, `{{FILES}}`, `{{VALIDATE}}`, `{{COMMITS}}`, `{{SECTIONS}}`, `{{REPOS}}` and `{{PARENT}}`; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow; `CLAUDE.nested.md` and `harness.nested.yml`, the same two for a repository under a root (ADR-0009). |
+| `harness/elephant/` | `reverse.md`, what a drafting session is told, which under a root includes citing the root and, beside a contracts repository, filling `serves:` for each definition it serves that it can name a test for; `elephant.yaml`, the model and budget. |
+| `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills, `{{NAME}}`, `{{DATE}}`, `{{FILES}}`, `{{VALIDATE}}`, `{{COMMITS}}`, `{{SECTIONS}}`, `{{REPOS}}` and `{{PARENT}}`; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow; `CLAUDE.nested.md` and `harness.nested.yml`, the same two for a repository under a root (ADR-0009). For ADR-0010, `change.md` carries a comment, for contracts repositories only, showing the `servers` block; `CLAUDE.nested.md` states both halves of the rule; and `harness.nested.yml` has one line, `{{CONTRACTS_CHECKOUT}}`, that bootstrap replaces with a checkout step for the contracts repository or removes. |
 | `harness/safe-push` | The one door (ADR-0006). |
+| `harness/safe_push_test.go` | Runs the real `safe-push`, without a pull request, against a bare remote it throws away: one test for each thing the script must do or refuse. The only Go file at the module's root. |
 | `harness/hooks/` | `pre-push`, `commit-msg`, and `install`. |
 | `.github/workflows/harness.yml` | This repository's CI: vet, the harness's tests, the checker. A copy of the template. |
 
@@ -628,7 +811,21 @@ Paths a fault would travel, and the test that walks each:
 - a repository that has not asked for the convention is not bound by it — `TestTheConventionBindsOnlyARepositoryWhoseDesignAsksForIt`
 - a repository on disk under a root that the map does not list is refused — `TestARepositoryOnDiskIsOnTheMap`
 - a citation of the root's that the root does not define is refused — `TestACitationOfTheRootLandsInTheRootsDesign`
-- a nested repository's skeleton carries the root's rules, and one that stands alone carries none — `TestANestedRepositoryTakesItsRulesFromTheRoot`
+- a nested repository's skeleton carries the root's rules, and one with no root above it carries none — `TestANestedRepositoryTakesItsRulesFromTheRoot`
 - a root's skeleton lists every repository found under it — `TestARootsSkeletonCarriesTheMap`
 - a repository under a root is given no second harness, and passes with the root's — `TestARepositoryUnderARootUsesTheRootsHarnessAndRules`
 - a listed repository is cloned or fetched and never merged — `TestTheMapIsBroughtInLineWithoutMerging`
+- every RPC and request field of a definition is found, and nothing else is taken for one — `TestTheProtoScanFindsRPCsAndRequestFields`
+- a servers block is read from its fence, and a malformed one is refused — `TestTheServersBlockIsReadFromItsFence`
+- a repository is held to the contracts rules exactly when the root's map gives it a part in them — `TestARepositorysRoleIsReadFromTheRootsMap`
+- a new definition no note lists with a server on the map is refused — `TestANewDefinitionIsListedWithItsServer`
+- a merged definition whose server names no test is refused there, and so is a contracts repository that cannot be read — `TestAListedDefinitionIsRefusedUntilItsServerNamesATest`
+- a definition that has not merged binds no server — `TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges`
+- a change branch that passes is pushed, and main does not move — `TestAChangeBranchThatPassesIsPushed`
+- work on main or a stray branch is moved to a change branch before it is pushed — `TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`
+- new work on a branch whose pull request has landed is moved to a branch of its own — `TestABranchAlreadyMergedIsNotPushedToAgain`
+- a tree with uncommitted work is refused — `TestADirtyTreeIsRefused`
+- a branch that conflicts with main is refused, with the file named — `TestABranchThatDoesNotMergeCleanlyIsRefused`
+- a branch the checker refuses is not pushed — `TestABranchTheCheckerRefusesIsNotPushed`
+- a title that is not conventional is refused where the design asks for them — `TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks`
+- an update replaces the harness and the method's rules, and nothing that is the project's — `TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`

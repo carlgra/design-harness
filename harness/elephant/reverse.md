@@ -49,7 +49,11 @@ Where the survey lists a sibling of kind `contracts`, the definitions repositori
 through live there and not here. Under `How it works`, say which of them this repository
 serves and which it calls, as far as its code shows, naming each as the code names it; if
 you can read the sibling at the path the survey gives, check the names against it, and if
-you cannot, say that you could not.
+you cannot, say that you could not. For each definition this repository serves that one
+of its tests walks, add an entry to a `serves:` list in the spine, `name:` the definition
+in full as the contracts repository declares it and `test:` the test, and put the test in
+`tests:` as well. Leave out any you cannot name a test for, and give each a row under
+`What no machine proves yet`.
 
 If the survey says repositories are **nested under this one**, this is a root. Its design
 is about what binds all of them, not about what any one of them does: keep the `repos:`
