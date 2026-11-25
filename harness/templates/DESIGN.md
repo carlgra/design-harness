@@ -14,6 +14,9 @@ tests: []
 {{VALIDATE}}
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
 {{COMMITS}}
+# The server's protection of the default branch is read before every push
+# (GitHub, through gh). Take the # off once main is protected.
+# protection: required
 # What a note under design/changes/ carries, from the date the rule began.
 notes:
   from: {{DATE}}

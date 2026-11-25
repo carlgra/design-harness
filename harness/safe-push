@@ -7,8 +7,9 @@
 # named for it: one branch per change, whatever branch the work began on;
 # requires a clean tree so what was validated is what is pushed; runs the
 # validation CI runs; refuses a pull request title that is not a Conventional
-# Commit, where the design asks for them; pushes with --force-with-lease,
-# never --force; opens the pull request. Blocks on any failure rather than
+# Commit, where the design asks for them; reads the server's protection of
+# main and refuses when it lacks something, where the design asks for that;
+# pushes with --force-with-lease, never --force; opens the pull request. Blocks on any failure rather than
 # letting a broken branch reach the server and fail minutes later in CI.
 #
 # Usage:  harness/safe-push            push the current branch, open a PR
@@ -285,6 +286,18 @@ With several, fold them into one, as the merge will:
 Nothing pushed."
   echo "  $SUBJECT"
 fi
+
+# --------------------------------------------------------------------------
+# EVERYTHING ABOVE RUNS ON THIS MACHINE. What refuses a merge that never came
+# through here is a setting on the server, made by hand, that anyone with the
+# rights can switch off without a word. A repository whose design says
+# `protection: required` has it read here, before every push, and the push is
+# refused while a pull request, the harness check or the refusal of a force
+# push is missing; one that does not say so has nothing read and prints
+# nothing. It is read as whoever is logged in to gh: the server shows a
+# branch's protection to an administrator only, so anyone else is told so and
+# not refused.
+go -C "$HARNESS" run ./cmd/protection || die "Nothing pushed."
 
 # --------------------------------------------------------------------------
 step "Push"

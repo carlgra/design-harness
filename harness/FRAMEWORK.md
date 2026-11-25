@@ -88,6 +88,7 @@ tests:                 # tests that must exist, by name
   - TestAnEmptyCartIsRefused
 validate: make test    # the repository's own gate, run after the checks pass (optional)
 commits: conventional  # a commit's subject is a Conventional Commit (optional)
+protection: required   # the server's protection of main is read before every push (optional)
 notes:                 # what a note under design/changes/ carries
   from: 2026-01-31     #   notes dated before this are never reread
   sections: [Problem, Plan, Alternatives rejected, Files]
@@ -294,5 +295,10 @@ repository: read it, and change it through the same door as everything else.
 ## What a person still does
 
 Protect `main`: require a pull request and the `harness` status check, refuse force
-pushes, and squash on merge if `commits: conventional` is on. Read the design at review.
-Merge. No script here does those, and none should.
+pushes, and squash on merge if `commits: conventional` is on. On GitHub,
+`go -C harness run ./cmd/protection -set` adds the first three to whatever the branch
+already has, when you run it and never otherwise; and with `protection: required` in the
+design's frontmatter, `safe-push` reads them before every push and refuses while one is
+missing. Switch on "Automatically delete head branches" too, so that a pull request
+stacked on another is retargeted to `main` when the one below it merges. Read the design
+at review. Merge. No script here does those two, and none should.

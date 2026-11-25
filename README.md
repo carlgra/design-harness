@@ -73,6 +73,15 @@ To use an agent of your own instead of the headless session, `go -C harness run
 ./cmd/elephant prompt` prints the same instructions and survey for you to hand over.
 
 Last, protect `main` on the server: require a pull request and the `harness` status check.
+On GitHub, as an administrator of the repository:
+
+```
+go -C harness run ./cmd/protection -set -n   # what it would send
+go -C harness run ./cmd/protection -set      # add what is lacking, change nothing else
+```
+
+Then put `protection: required` in the frontmatter of `design/DESIGN.md`, and every
+`safe-push` reads the setting again and refuses while it lacks something.
 
 ## Several repositories: services beside a contracts repository
 
