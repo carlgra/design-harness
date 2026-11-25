@@ -35,6 +35,10 @@ type Design struct {
 	// Commits is the convention a commit's subject follows here; the only
 	// one is "conventional". Empty binds nothing.
 	Commits string `yaml:"commits"`
+	// Protection asks for the server's protection of the default branch to
+	// be read before every push; the only value is "required". Empty reads
+	// nothing.
+	Protection string `yaml:"protection"`
 	// Notes says what a design note under design/changes/ must carry.
 	Notes Notes `yaml:"notes"`
 	// Repos are the repositories nested under this one, which is then a

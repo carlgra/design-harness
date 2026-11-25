@@ -4,6 +4,7 @@
 package harness
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,9 +19,19 @@ type project struct {
 	dir    string
 	remote string
 	script string
+	// extra is added to the environment of everything the project runs.
+	extra []string
 }
 
 func newProject(t *testing.T, spine string) *project {
+	t.Helper()
+	return newProjectAt(t, spine, "remote.git")
+}
+
+// newProjectAt is newProject with the remote at a path of the caller's
+// choosing under the temporary directory: one that reads as a GitHub address
+// is how a test stands in for a repository there.
+func newProjectAt(t *testing.T, spine, remote string) *project {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not installed")
@@ -30,7 +41,10 @@ func newProject(t *testing.T, spine string) *project {
 		t.Fatal(err)
 	}
 	tmp, _ := filepath.EvalSymlinks(t.TempDir())
-	p := &project{t: t, dir: filepath.Join(tmp, "work"), remote: filepath.Join(tmp, "remote.git"), script: script}
+	p := &project{t: t, dir: filepath.Join(tmp, "work"), remote: filepath.Join(tmp, filepath.FromSlash(remote)), script: script}
+	if err := os.MkdirAll(filepath.Dir(p.remote), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	seed := filepath.Join(tmp, "seed")
 	p.dir = seed
 	p.write("design/DESIGN.md", "---\nfiles:\n  - app/**\n"+spine+"---\n\n# work\n\n## Scope\n\nA thing to push.\n")
@@ -72,7 +86,7 @@ func env(dir string) []string {
 func (p *project) exec(dir, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
-	cmd.Env = env(dir)
+	cmd.Env = append(env(dir), p.extra...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -283,5 +297,64 @@ func TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks(t *testing.T) {
 	q.commit("Added a fourth line", "one\ntwo\nthree\nfour\n")
 	if out, err := q.push(); err != nil {
 		t.Fatalf("a repository that has not asked for the convention was held to it: %v\n%s", err, out)
+	}
+}
+
+// fakeGH puts a gh on the project's PATH that answers the three reads
+// cmd/protection makes: the repository, the branch's protection as given
+// (empty is a branch with none), and no rulesets.
+func (p *project) fakeGH(protection string) {
+	p.t.Helper()
+	bin := filepath.Join(filepath.Dir(p.dir), "bin")
+	reply := filepath.Join(bin, "protection.json")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		p.t.Fatal(err)
+	}
+	if err := os.WriteFile(reply, []byte(protection), 0o644); err != nil {
+		p.t.Fatal(err)
+	}
+	script := fmt.Sprintf(`#!/bin/sh
+for a in "$@"; do path="$a"; done
+case "$path" in
+  repos/acme/work) echo '{}' ;;
+  repos/acme/work/branches/main/protection)
+    if [ -s %[1]q ]; then cat %[1]q; else
+      echo '{"message":"Branch not protected"}'; echo 'gh: Branch not protected (HTTP 404)' >&2; exit 1
+    fi ;;
+  repos/acme/work/rules/branches/main) echo '[]' ;;
+  *) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+esac
+`, reply)
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
+		p.t.Fatal(err)
+	}
+	p.extra = []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
+}
+
+// Where the design asks for it, a push is refused while the server's
+// protection of main lacks something, and says what; with all of it there
+// the push goes through; and a repository that has not asked has nothing
+// read, whatever the server holds.
+func TestAPushIsRefusedWhileTheServersProtectionLacksSomething(t *testing.T) {
+	const there = `{"required_status_checks": {"contexts": ["harness"]}, "required_pull_request_reviews": {}, "allow_force_pushes": {"enabled": false}}`
+
+	p := newProjectAt(t, "protection: required\n", "github.com/acme/work.git")
+	p.git("checkout", "-q", "-b", "feat/a-fourth-line")
+	p.commit("feat: a fourth line", "one\ntwo\nthree\nfour\n")
+	p.fakeGH("")
+	p.refused("a pull request is not required")
+	p.fakeGH(`{"required_pull_request_reviews": {}, "allow_force_pushes": {"enabled": false}}`)
+	p.refused("the `harness` status check is not required")
+	p.fakeGH(there)
+	if out, err := p.push(); err != nil || !strings.Contains(p.branches(), "feat/a-fourth-line") {
+		t.Fatalf("a push to a protected repository was refused: %v\n%s", err, out)
+	}
+
+	q := newProjectAt(t, "", "github.com/acme/work.git")
+	q.git("checkout", "-q", "-b", "feat/a-fourth-line")
+	q.commit("feat: a fourth line", "one\ntwo\nthree\nfour\n")
+	q.fakeGH("")
+	if out, err := q.push(); err != nil || strings.Contains(out, "protection") {
+		t.Fatalf("a repository that has not asked had its protection read: %v\n%s", err, out)
 	}
 }

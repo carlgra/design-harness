@@ -49,10 +49,19 @@ tests:
   - TestANewDefinitionIsListedWithItsServer
   - TestAListedDefinitionIsRefusedUntilItsServerNamesATest
   - TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges
+  - TestAProtectionThatLacksSomethingIsNamedForIt
+  - TestAProtectionThatCannotBeReadIsNotTakenForNone
+  - TestSettingAddsWhatIsLackingAndChangesNothingElse
+  - TestProtectionIsReadOnlyWhereTheDesignAsks
+  - TestAPushIsRefusedWhileTheServersProtectionLacksSomething
 # The repository's own gate, run from the root after the checks pass.
 validate: go -C harness vet ./... && go -C harness test ./...
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
 commits: conventional
+# The server's protection of main is read before every push, and a push is
+# refused while it lacks a pull request, the harness check or the refusal of
+# a force push.
+protection: required
 # What a note under design/changes/ carries, from the date the rule began.
 notes:
   from: 2026-11-24
@@ -96,8 +105,9 @@ Two names carry the method.
 forgotten. It has a body, read by people and by model sessions, and a spine, its YAML
 frontmatter, read by a machine. The spine says which paths hold the code (`files:`),
 which tests must exist (`tests:`), the repository's own gate (`validate:`), whether a
-commit's subject is a Conventional Commit (`commits:`), and what a change note must
-carry (`notes:`). Six files at a repository's root need no entry in `files:`, because
+commit's subject is a Conventional Commit (`commits:`), whether the server's protection
+of the default branch is read before a push (`protection:`), and what a change note
+must carry (`notes:`). Six files at a repository's root need no entry in `files:`, because
 they are how a repository works rather than its code: `README.md`, `CLAUDE.md`,
 `AGENTS.md`, `LICENSE` (with or without `.md` or `.txt`), `.gitignore` and
 `.gitattributes`. A glob ending `/**` is everything under a directory; any other is a
@@ -169,6 +179,70 @@ The parts, all under `harness/`:
   file, the runner the tests replace.
 - `cmd/subject` and `internal/convention` say whether a subject is a Conventional
   Commit, in a repository whose spine asks for them.
+- `cmd/protection` reads how the server protects the default branch, in a repository
+  whose spine says `protection: required` (ADR-0011), and passes without reading
+  anything in one that does not. It needs three things of the branch: that a pull
+  request is required, that the status check named `harness` is required, which is the
+  name of the one job in the CI workflow, and that a force push is refused. It reads
+  them from two places and either will do for each: the branch's own protection, and
+  the rules of every ruleset that applies to the branch. The first is shown to an
+  administrator of the repository only; the second to anyone who can read it. With
+  nothing lacking it prints one line and passes. With something lacking, read as an
+  administrator, it refuses, names each thing, and prints the command that adds them.
+  With something lacking and the branch's own protection not shown, it says so in one
+  line and passes: whoever cannot read the setting cannot change it, and is not
+  refused for it. A server that cannot be asked, no `gh`, no network, no login, is a
+  refusal and never a pass. `-set` adds what is lacking and changes nothing else: it
+  sends back the protection it read, with the pull request requirement, the `harness`
+  check and the refusal of a force push added, and where the branch had none, the
+  least that will do, a pull request with no approvals asked, so that a person working
+  alone can still merge. It refuses to write over a protection it could not read, or
+  one that names who may dismiss a review or bypass a pull request, which it cannot
+  hand back whole; it then reads the branch again and reports what the server holds.
+  `-set -n` prints what would be sent and sends nothing. `-set` acts whatever the
+  spine says, since the setting is made before the line that has it read is switched
+  on, and where the spine does not ask it says how to. When anything is lacking it
+  writes all three into the branch's own protection, whatever a ruleset already
+  supplies; when nothing is, it sends nothing. A value of `protection:` other than
+  `required` is an error from this command, with the one value named, and never read
+  as off: `safe-push` then pushes nothing. GitHub means an `origin` whose address names
+  the host `github.com`, over HTTPS or SSH; any other host, a GitHub Enterprise server
+  included, is elsewhere.
+
+  What the server answers is sorted so. It is asked three things in turn: the
+  repository, `repos/<owner>/<name>`; the branch's protection,
+  `.../branches/<branch>/protection`; and the rules that apply to the branch,
+  `.../rules/branches/<branch>`. No answer at all, or any status but 200 for the
+  repository, a login that has lapsed included, is a server that cannot be asked. For
+  the protection: 200 is the protection; 404 whose message says the branch is "not
+  protected" is an administrator being told there is none; 403, and any other 404, is
+  the protection not shown; anything else cannot be asked. The rules add to what the
+  protection gave and never take away, and an answer for them that is not 200 adds
+  nothing and refuses nothing, since a server may have no rulesets to offer. Of the
+  rules, one of type `pull_request` is a pull request required, one of type
+  `non_fast_forward` is a force push refused, and one of type `required_status_checks`
+  requires each check its parameters list by `context`. The server lists there only
+  rules in force, not those of a ruleset being tried out, and a rule counts whoever
+  its ruleset lets bypass it, as a protection counts though an administrator may.
+
+  What `-set` sends is the whole protection, because the server replaces it whole. Of
+  what was read it carries back: for status checks, whether the branch must be up to
+  date, and every check, as the list that ties a check to the app that reports it,
+  with a check the server gave by name alone added to that list, and `harness` added
+  untied; for reviews, the number of approvals, whether a stale review is dismissed,
+  whether a code owner must review and whether the last push must be approved; who
+  may push, as logins and slugs, or nobody named where nobody was; and whether
+  administrators are held to it, a linear history is required, deletion is allowed,
+  creation is blocked, conversations must be resolved, the branch is locked, and a
+  fork may sync. A force push is always sent as refused. Signed commits are a setting
+  of their own on the server that this request does not carry and does not change.
+  Anything else the server holds there now or comes to hold is not carried, and is the
+  limit of "changes nothing else". It reads through the `gh`
+  tool as whoever is logged in, on GitHub only: where the spine asks and `origin` is
+  elsewhere, it refuses and says to take the line out. The default branch is
+  `origin/HEAD` as last fetched, else `main`. Under a root each repository asks for
+  itself: `protection:` is not one of the rules a nested repository takes from the
+  root's spine, because it is a fact about one repository's server settings.
 - `safe-push` is the one way a branch is pushed. It never pushes `main`, or a branch
   not named `feat/` or `fix/`: work it finds on one is moved, commits and uncommitted
   changes both, to a new branch, and that is what is pushed. The new branch is named
@@ -178,8 +252,8 @@ The parts, all under `harness/`:
   `fix`, or with Fix, Correct, Repair or Revert, and `feat/` otherwise. A branch whose remote is already merged
   into the default branch is treated the same way: new work on it is moved. It requires a clean tree; checks the branch merges cleanly into
   the remote's default branch; runs `go vet` over the harness itself and then the
-  checker, which runs the repository's gate; checks the title; pushes with
-  `--force-with-lease`; and opens the pull request on GitHub through `gh api`.
+  checker, which runs the repository's gate; checks the title; runs `cmd/protection`,
+  and pushes nothing if it refuses; pushes with `--force-with-lease`; and opens the pull request on GitHub through `gh api`.
 - `hooks/pre-push` refuses a push to `main` and runs the checker; `hooks/commit-msg`
   runs `cmd/subject`; `hooks/install` points `core.hooksPath` at them and refuses to
   switch off hooks already in use.
@@ -432,8 +506,9 @@ root needs is named in the workflow's comment and set by a person. A root is boo
 - **INV-011** — Nothing reaches `main` except through a pull request that passed the
   checker. *(`harness/hooks/pre-push` and `harness/safe-push` refuse the push, `test:
   TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`, `test:
-  TestABranchTheCheckerRefusesIsNotPushed`; the server's branch protection is read at
-  review)*
+  TestABranchTheCheckerRefusesIsNotPushed`; where the spine asks, the server's
+  protection is read before every push, `test:
+  TestAPushIsRefusedWhileTheServersProtectionLacksSomething`)*
 - **INV-012** — Nothing under `harness/` needs anything outside it, or names a
   particular project. One test looks outside: `bootstrap_test.go` looks for `bootstrap`
   beside `harness/`, runs it where it finds it, which is here, and skips where it does
@@ -482,7 +557,9 @@ that due. None is accepted as final.
 | Gap | Today | Destination | Trigger |
 |---|---|---|---|
 | INV-005 | the command hands a session only the prompt, the design and for readiness the change, and runs it away from the project; the `claude` tool may still load a person's own global instructions and memory into it | a start-up mode of the tool that loads nothing and still uses the stored login, named in `internal/session`, with the test extended to pin it | the tool offering one |
-| INV-011 | the hook and the push script refuse a push to `main`; protection on the server is set by hand and nothing re-reads it | the checker reads the repository's protection through `gh api` and fails if the pull request requirement or the `harness` check is off | the first project that asks for it |
+| INV-011 | the server's protection is read at a push, by a repository that asks, as an administrator; switched off and merged past in the server's own pages, nothing says so until the next administrator pushes, and a repository none of whose administrators push is never read | a scheduled CI job that reads it with a token an administrator stored, and fails | the first project that asks for it |
+| INV-011 | `-set` carries back the settings of a protection that are listed in *How it works*; one the server adds later is dropped by it without a word | `-set` refuses a protection holding a key it does not know | the first one lost |
+| INV-011 | a ruleset's rules are read from the shape the server documents; no ruleset has been read from a live repository by a test | a test against a repository kept for it | the first project protected by a ruleset alone |
 | INV-012 | read at review | a test that fails on any `..` path or absolute path in a script, and on a name from a list of project names | the first slip |
 | INV-017 | definitions are read from protobuf only; a contracts repository in another format, OpenAPI or JSON Schema, has its notes held to the block and nothing scanned | a scan per format, behind the same two rules | the first project whose contracts are not protobuf |
 | INV-017 | a contracts repository whose default branch is neither `main` nor `master`, checked out without `origin/HEAD`, as a CI checkout is, is refused until a step sets it | the workflow template sets it after checkout | the first such repository |
@@ -617,8 +694,9 @@ unconfirmed one look the same to a machine.
 that needs nothing outside its directory and has one dependency, a YAML parser.
 The commands are run with `go -C harness run`, so the checker, the hooks and the push
 need the Go toolchain and git and nothing else, whatever language the project is
-written in. Two things need more, and say so when it is missing: opening a pull request
-needs GitHub's `gh`, and the goldfish and the elephant's draft need the `claude`
+written in. Three things need more, and say so when it is missing: opening a pull request
+needs GitHub's `gh`, so does reading the server's protection where the spine asks for
+it (ADR-0011), and the goldfish and the elephant's draft need the `claude`
 command-line tool. The scripts set `GOWORK=off` so that
 a project's own Go workspace does not claim the module. Updating is running
 `bootstrap --update`, which replaces the copy and keeps the project's settings.
@@ -766,6 +844,37 @@ either order.
   test that merely mentions it; the name of the test is proved, and what it walks is
   read at review.
 
+### ADR-0011 — The server's protection is read at the door, where the design asks
+
+A repository whose spine says `protection: required` has the server's protection of
+its default branch read by `safe-push` before every push, and the push refused while a
+pull request, the `harness` check or the refusal of a force push is missing. One that
+does not say so has nothing read. The command that reads it can also add what is
+lacking, when a person asks it to and never otherwise.
+
+Everything else the method enforces runs on a person's machine or in CI, and what
+makes CI count is one setting on the server, made by hand at adoption and never looked
+at again. A repository can lose it, or never have had the check added to it, and every
+local refusal still passes. Reading it at the push puts the question where an answer is
+already being waited for, with a login that is already there.
+
+It is read at the push and not by the checker, because the checker runs in CI with a
+token that is not shown a branch's protection, and on every commit's hook, where a
+call to a server has no place. It is opt-in because it needs GitHub, the `gh` tool
+and, to be of use, an administrator among those who push.
+
+#### Alternatives rejected
+
+- **A check in `cmd/check`.** CI could not run it without a stored administrator's
+  token, and every local run of the checker would wait on a server.
+- **Refuse whoever cannot read the protection.** Every contributor who is not an
+  administrator would be locked out by a setting they can neither see nor change.
+- **Set the protection from `bootstrap`.** Adoption would change a setting on a server
+  without being asked; `-set` is a command a person types.
+- **Always on.** A project on another server, or with no `gh`, could not push.
+- **Replace the protection with a known-good one.** A team's approvals, restrictions
+  and other checks would be wiped by a command that said it was adding one.
+
 ## Files
 
 | File | Purpose |
@@ -780,12 +889,13 @@ either order.
 | `harness/cmd/goldfish/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. |
 | `harness/cmd/elephant/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
+| `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the spine's `protection:`, the `gh` tool and what is printed. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
 | `harness/goldfish/` | `comprehension.md` and `readiness.md`, the two prompts; `goldfish.yaml`, the model, verdict prefix and budget. |
 | `harness/elephant/` | `reverse.md`, what a drafting session is told, which under a root includes citing the root and, beside a contracts repository, filling `serves:` for each definition it serves that it can name a test for; `elephant.yaml`, the model and budget. |
 | `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills, `{{NAME}}`, `{{DATE}}`, `{{FILES}}`, `{{VALIDATE}}`, `{{COMMITS}}`, `{{SECTIONS}}`, `{{REPOS}}` and `{{PARENT}}`; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow; `CLAUDE.nested.md` and `harness.nested.yml`, the same two for a repository under a root (ADR-0009). For ADR-0010, `change.md` carries a comment, for contracts repositories only, showing the `servers` block; `CLAUDE.nested.md` states both halves of the rule; and `harness.nested.yml` has one line, `{{CONTRACTS_CHECKOUT}}`, that bootstrap replaces with a checkout step for the contracts repository or removes. |
 | `harness/safe-push` | The one door (ADR-0006). |
-| `harness/safe_push_test.go` | Runs the real `safe-push`, without a pull request, against a bare remote it throws away: one test for each thing the script must do or refuse. The only Go file at the module's root. |
+| `harness/safe_push_test.go` | Runs the real `safe-push`, without a pull request, against a bare remote it throws away: one test for each thing the script must do or refuse. The test of ADR-0011 puts a stand-in for `gh` on the path and the remote at a path that reads as a GitHub address. The only Go file at the module's root. |
 | `harness/hooks/` | `pre-push`, `commit-msg`, and `install`. |
 | `.github/workflows/harness.yml` | This repository's CI: vet, the harness's tests, the checker. A copy of the template. |
 
@@ -828,4 +938,9 @@ Paths a fault would travel, and the test that walks each:
 - a branch that conflicts with main is refused, with the file named — `TestABranchThatDoesNotMergeCleanlyIsRefused`
 - a branch the checker refuses is not pushed — `TestABranchTheCheckerRefusesIsNotPushed`
 - a title that is not conventional is refused where the design asks for them — `TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks`
+- a branch's protection that lacks a pull request, the check or the refusal of a force push is named for each, whichever of the two places holds them — `TestAProtectionThatLacksSomethingIsNamedForIt`
+- a protection the server does not show, or a server that cannot be asked, is not read as a branch with none — `TestAProtectionThatCannotBeReadIsNotTakenForNone`
+- setting sends back what was there with what was lacking added, and writes over nothing it could not read whole — `TestSettingAddsWhatIsLackingAndChangesNothingElse`
+- a repository that has not asked has nothing read — `TestProtectionIsReadOnlyWhereTheDesignAsks`
+- a push is refused while the server's protection lacks something, where the design asks — `TestAPushIsRefusedWhileTheServersProtectionLacksSomething`
 - an update replaces the harness and the method's rules, and nothing that is the project's — `TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`
