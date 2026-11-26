@@ -36,7 +36,7 @@ func TestAVerdictIsReadFromTheLastLineAndNothingElseCounts(t *testing.T) {
 }
 
 func fakeRunner(replies map[string]string, err error, seen *[]string) session.Runner {
-	return func(model string, budget float64, prompt string) (string, error) {
+	return func(model, prompt string) (string, error) {
 		*seen = append(*seen, prompt)
 		if err != nil {
 			return "", err

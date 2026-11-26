@@ -6,7 +6,7 @@
 // Run it by hand when a design changes materially; it is not a gate. Each
 // session is the claude command-line tool in print mode with no tools and no
 // persisted session, so that it has the design and nothing else. The model,
-// the verdict line and the budget are in harness/goldfish/goldfish.yaml; the
+// and the verdict line are in harness/goldfish/goldfish.yaml; the
 // two prompts are beside it.
 //
 //	go -C harness run ./cmd/goldfish -change "what the pull request does"
@@ -190,7 +190,7 @@ func run(tests []test, head, change string, s session.Settings, r session.Runner
 	var out []verdict
 	for _, t := range tests {
 		v := verdict{Test: t.Name, Model: s.Model}
-		reply, err := r(s.Model, s.MaxBudgetUSD, compose(t, head, change))
+		reply, err := r(s.Model, compose(t, head, change))
 		v.Reply = reply
 		if err != nil {
 			v.Err = err

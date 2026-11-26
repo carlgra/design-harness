@@ -5,7 +5,5 @@
 # verdict: the prefix of the line a session must end its reply with for the
 #   verdict to be read. The script reads "<prefix> PASS" or "<prefix> FAIL"
 #   and nothing else counts; a reply with no such line is a failure.
-# max-budget-usd: the most one session may spend. 0 means no cap.
-model: claude-fable-5-2
+model: claude-sonnet-5-5
 verdict: "VERDICT:"
-max-budget-usd: 3

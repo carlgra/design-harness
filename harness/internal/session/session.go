@@ -20,8 +20,6 @@ type Settings struct {
 	Model string `yaml:"model"`
 	// Verdict is the prefix of the line a goldfish must end its reply with.
 	Verdict string `yaml:"verdict"`
-	// MaxBudgetUSD is the most one session may spend. 0 means no cap.
-	MaxBudgetUSD float64 `yaml:"max-budget-usd"`
 }
 
 // Load reads a settings file. A model is always required.
@@ -42,15 +40,15 @@ func Load(path string) (Settings, error) {
 
 // Runner runs one session with one prompt and answers the reply. The real one
 // is the claude command-line tool; the tests substitute their own.
-type Runner func(model string, budget float64, prompt string) (string, error)
+type Runner func(model, prompt string) (string, error)
 
 // Claude runs a session through the claude command-line tool in print mode
 // with no persisted session: the prompt on stdin, the reply on stdout. tools
 // are the built-in tools the session may use, and none means none; dir is
 // where it runs, which is what a session with tools can read.
 func Claude(bin, dir string, tools ...string) Runner {
-	return func(model string, budget float64, prompt string) (string, error) {
-		cmd := exec.Command(bin, Args(model, budget, tools)...)
+	return func(model, prompt string) (string, error) {
+		cmd := exec.Command(bin, Args(model, tools)...)
 		cmd.Dir = dir
 		cmd.Stdin = strings.NewReader(prompt)
 		var stdout, stderr bytes.Buffer
@@ -65,11 +63,9 @@ func Claude(bin, dir string, tools ...string) Runner {
 
 // Args are the arguments a session is started with. --tools is always given,
 // empty when the session has none: left out, the tool's default is every
-// tool. Not --bare: that mode skips the stored login.
-func Args(model string, budget float64, tools []string) []string {
-	args := []string{"-p", "--tools", strings.Join(tools, ","), "--no-session-persistence", "--model", model}
-	if budget > 0 {
-		args = append(args, "--max-budget-usd", fmt.Sprintf("%g", budget))
-	}
-	return args
+// tool. Not --bare: that mode skips the stored login. No spending cap is
+// ever passed: a session stopped short of the end of a large design or a
+// large repository has answered nothing.
+func Args(model string, tools []string) []string {
+	return []string{"-p", "--tools", strings.Join(tools, ","), "--no-session-persistence", "--model", model}
 }

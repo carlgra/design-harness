@@ -665,7 +665,7 @@ could not know at all is written `TODO(elephant)` with the question, and alterna
 recorded nowhere are written `Not recorded. TODO(elephant)` rather than invented. A draft is written only over a skeleton; a design a
 person has edited is replaced only with `-force`. The gate and the commit convention
 are never switched on by a survey, the convention excepted when the history already
-follows it or, under a root, when the root's spine asks for it (INV-008). The model and budget are values in `harness/elephant/elephant.yaml`; what
+follows it or, under a root, when the root's spine asks for it (INV-008). The model is a value in `harness/elephant/elephant.yaml`, and no session is given a spending cap, since one stopped short of the end has answered nothing; what
 the session is told is `harness/elephant/reverse.md`.
 
 A wrong draft is faster to correct than a blank page is to fill, so the draft is worth
@@ -891,7 +891,7 @@ and, to be of use, an administrator among those who push.
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
 | `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the spine's `protection:`, the `gh` tool and what is printed. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
-| `harness/goldfish/` | `comprehension.md` and `readiness.md`, the two prompts; `goldfish.yaml`, the model, verdict prefix and budget. |
+| `harness/goldfish/` | `comprehension.md` and `readiness.md`, the two prompts; `goldfish.yaml`, the model and the verdict prefix. |
 | `harness/elephant/` | `reverse.md`, what a drafting session is told, which under a root includes citing the root and, beside a contracts repository, filling `serves:` for each definition it serves that it can name a test for; `elephant.yaml`, the model and budget. |
 | `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills, `{{NAME}}`, `{{DATE}}`, `{{FILES}}`, `{{VALIDATE}}`, `{{COMMITS}}`, `{{SECTIONS}}`, `{{REPOS}}` and `{{PARENT}}`; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow; `CLAUDE.nested.md` and `harness.nested.yml`, the same two for a repository under a root (ADR-0009). For ADR-0010, `change.md` carries a comment, for contracts repositories only, showing the `servers` block; `CLAUDE.nested.md` states both halves of the rule; and `harness.nested.yml` has one line, `{{CONTRACTS_CHECKOUT}}`, that bootstrap replaces with a checkout step for the contracts repository or removes. |
 | `harness/safe-push` | The one door (ADR-0006). |
