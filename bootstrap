@@ -107,7 +107,7 @@ else
     [ -f "$T/harness/FRAMEWORK.md" ] || \
       die "$T/harness exists and is not this harness. The harness lives in harness/ at the root; move what is there first."
     if [ "$UPDATE" -eq 1 ]; then
-      # The settings are the project's own: its model, its budget.
+      # The settings are the project's own: its model.
       KEEP="$(mktemp -d)"
       for f in goldfish/goldfish.yaml elephant/elephant.yaml; do
         [ ! -f "$T/harness/$f" ] || { mkdir -p "$KEEP/$(dirname "$f")"; cp "$T/harness/$f" "$KEEP/$f"; }

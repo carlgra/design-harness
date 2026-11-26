@@ -158,8 +158,8 @@ the time the right response is to mend the document and ask again; sometimes the
 is wrong, and the person who merges says so. The verdicts go on the pull request for that
 person. A model's opinion never blocks a merge and never permits one.
 
-The prompts are `harness/goldfish/comprehension.md` and `readiness.md`; the model and the
-budget are in `harness/goldfish/goldfish.yaml`. It needs the `claude` command-line tool,
+The prompts are `harness/goldfish/comprehension.md` and `readiness.md`; the model is
+in `harness/goldfish/goldfish.yaml`, and a session has no spending cap. It needs the `claude` command-line tool,
 signed in.
 
 ## The elephant: a design for a repository that already has code

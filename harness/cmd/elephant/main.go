@@ -15,7 +15,7 @@
 // design/DESIGN.md and to the project's section of CLAUDE.md, and only over a
 // skeleton unless -force is given. What the session could not find in the
 // repository it marks "(inferred)" or TODO(elephant), and a person answers
-// each before the design is the design. The model and the budget are in
+// each before the design is the design. The model is in
 // harness/elephant/elephant.yaml; the prompt is beside it.
 package main
 
@@ -142,7 +142,7 @@ func main() {
 			fatal(err)
 		}
 		fmt.Printf("elephant: %s: one session, model %s, reading %d files and writing none\n", s.Name, set.Model, s.Files)
-		reply, err := session.Claude(*claudeFlag, root, "Read", "Grep", "Glob")(set.Model, set.MaxBudgetUSD, p)
+		reply, err := session.Claude(*claudeFlag, root, "Read", "Grep", "Glob")(set.Model, p)
 		if err != nil {
 			fatal(err)
 		}
