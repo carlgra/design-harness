@@ -30,7 +30,7 @@ Read `README.md`, then `design/DESIGN.md`. The method this repository works by i
 
 Run the checker, `go -C harness run ./cmd/check`, then read `design/DESIGN.md` for the
 part you are about to change. If what you need is not there, that is the first thing to
-fix. When a design change is material, `go -C harness run ./cmd/goldfish -change "..."`
+fix. When a design change is material, `go -C harness run ./cmd/coldread -change "..."`
 asks two sessions with no memory whether the document explains the repository and whether
 the change could be built from it alone; paste what they say into the pull request. It is
 advice for whoever merges, not a gate.
@@ -44,7 +44,7 @@ harness/hooks/install
 
 ## This project
 
-<!-- elephant:project:begin -->
+<!-- design:project:begin -->
 - This repository is the method's own, and `harness/` is what `bootstrap` copies into
   other people's projects. Nothing under `harness/` may refer to anything outside it, and
   nothing in it may name a particular project: a path, a remote, a person.
@@ -57,6 +57,6 @@ harness/hooks/install
   under a root.
 - The shell scripts are POSIX `sh`, not bash. They run on macOS and Linux as they come.
 - A test is named for the fault it catches, as a sentence, and the design names it.
-- The prompts under `harness/goldfish/` and `harness/elephant/` are code: a change to what
+- The prompts under `harness/coldread/` and `harness/reverse/` are code: a change to what
   a session is told is a change with a note.
-<!-- elephant:project:end -->
+<!-- design:project:end -->

@@ -14,7 +14,7 @@ import (
 
 // Unfinished is the mark the reverse-engineering skeleton and draft leave
 // where a person has still to write or confirm something.
-const Unfinished = "TODO(elephant)"
+const Unfinished = "TODO(design)"
 
 // Result is what a run found.
 type Result struct {

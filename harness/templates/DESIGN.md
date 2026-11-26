@@ -26,7 +26,7 @@ notes:
 
 # {{NAME}}
 
-<!-- elephant:skeleton -->
+<!-- design:skeleton -->
 
 This is the design: what this repository is for, how it works, what must always
 hold, every decision in force with its reason and what was rejected, and which
@@ -38,18 +38,18 @@ file saying what is now true.
 
 {{PARENT}}
 
-TODO(elephant): what this repository is for, in a paragraph a stranger could
+TODO(design): what this repository is for, in a paragraph a stranger could
 repeat. Then what it holds, and what it deliberately does not.
 
 ## How it works
 
-TODO(elephant): the parts, what each does, and how they fit together: what
+TODO(design): the parts, what each does, and how they fit together: what
 calls what, what is stored where, what crosses each boundary. Enough that
 someone who has never seen the code could explain it to a colleague.
 
 ## Principles
 
-TODO(elephant): the few rules of thumb every decision here refers back to,
+TODO(design): the few rules of thumb every decision here refers back to,
 each one line in bold and a sentence of why, citing the decision that set it.
 
 - **The design is current state; git is the history.** This document says what
@@ -61,7 +61,7 @@ each one line in bold and a sentence of why, citing the decision that set it.
 Each rule has an id it keeps for life, and says what proves it: a named test,
 the checker, or a person reading at review.
 
-TODO(elephant): the invariants. For example:
+TODO(design): the invariants. For example:
 
 - **INV-001** — Design before code: no source file exists that the design does
   not account for. *(the checker)*
@@ -73,7 +73,7 @@ makes that due. None is accepted as final.
 
 | Gap | Today | Destination | Trigger |
 |---|---|---|---|
-| TODO(elephant) | how the rule is held now | the test or check that would prove it | what makes that due |
+| TODO(design) | how the rule is held now | the test or check that would prove it | what makes that due |
 
 ## How a change lands
 
@@ -91,17 +91,17 @@ that a citation always lands. A decision states a constraint, never a value:
 where it depends on a number or a string, it says what the value must satisfy
 and names the file the value lives in.
 
-### ADR-0001 — TODO(elephant): the decision, as one sentence that is true
+### ADR-0001 — TODO(design): the decision, as one sentence that is true
 
-TODO(elephant): what was decided, and why.
+TODO(design): what was decided, and why.
 
 #### Alternatives rejected
 
-TODO(elephant): what else was considered, and why not.
+TODO(design): what else was considered, and why not.
 
 ## Files
 
-TODO(elephant): every path under `files:` and what it is for.
+TODO(design): every path under `files:` and what it is for.
 
 | File | Purpose |
 |---|---|
@@ -109,4 +109,4 @@ TODO(elephant): every path under `files:` and what it is for.
 
 Paths a fault would travel, and the test that walks each:
 
-- TODO(elephant): what goes wrong — `TheTestThatWalksIt`
+- TODO(design): what goes wrong — `TheTestThatWalksIt`

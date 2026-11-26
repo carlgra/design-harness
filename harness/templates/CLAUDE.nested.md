@@ -45,7 +45,7 @@ decision there applies here unchanged. The method is in `{{HARNESS}}/FRAMEWORK.m
 Run the checker from this directory, `go -C {{HARNESS}} run ./cmd/check`, then read
 `design/DESIGN.md` for the part you are about to change. If what you need is not there,
 that is the first thing to fix. When a design change is material,
-`go -C {{HARNESS}} run ./cmd/goldfish -change "..."` asks two sessions with no memory
+`go -C {{HARNESS}} run ./cmd/coldread -change "..."` asks two sessions with no memory
 whether the document explains the repository and whether the change could be built from
 it alone; paste what they say into the pull request. It is advice for whoever merges, not
 a gate.
@@ -61,7 +61,7 @@ Work in place, inside `{{PARENT}}`, so that `{{HARNESS}}` exists. Then, once:
 
 ## This project
 
-<!-- elephant:project:begin -->
-TODO(elephant): how to build, test and run this project, and what an agent would get wrong
-here without being told. `go -C {{HARNESS}} run ./cmd/elephant draft` writes a first version.
-<!-- elephant:project:end -->
+<!-- design:project:begin -->
+TODO(design): how to build, test and run this project, and what an agent would get wrong
+here without being told. `go -C {{HARNESS}} run ./cmd/reverse draft` writes a first version.
+<!-- design:project:end -->

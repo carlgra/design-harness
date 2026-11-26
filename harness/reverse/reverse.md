@@ -30,10 +30,10 @@ one row under `Files`, name none of its tests, and do not spend reading on it;
    - Where you state a reason or an intent that no file states, end the sentence with
      `(inferred)`.
    - Where a decision's alternatives are not recorded in any document, comment or commit
-     subject you were given, write exactly `Not recorded. TODO(elephant)` under
+     subject you were given, write exactly `Not recorded. TODO(design)` under
      `Alternatives rejected`. Never invent an alternative.
    - Where something a reader needs is simply not knowable from the repository, write
-     `TODO(elephant):` and the question a person must answer.
+     `TODO(design):` and the question a person must answer.
    A confident guess is the failure. A marked gap is the document working.
 
 ## A repository that is one of several

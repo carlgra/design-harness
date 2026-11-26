@@ -3,17 +3,17 @@
 A way of working on a codebase with agents in which the design is the source and the code
 is derived from it, and the scripts that enforce it.
 
-**The elephant never forgets.** Each repository has one design document,
+**The design is the repository's memory.** Each repository has one design document,
 `design/DESIGN.md`: what it is for, how it works, what must always hold, every decision in
 force with its reason and what was rejected, and which files realise it. A checker refuses
 any push in which the code and the document disagree.
 
-**The goldfish remembers nothing.** A session with no memory is handed that document, and
-only that document, and asked to explain the repository and to build a change from it.
-What it cannot do, the document does not say.
+**A cold read tests it.** A session with no memory is handed that document, and only that
+document, and asked to explain the repository and to build a change from it. What it
+cannot do, the document does not say.
 
-Everyone who arrives later, a new colleague or tomorrow's agent session, is a goldfish.
-The method is a way of making sure the elephant remembered what they will need.
+Everyone who arrives later, a new colleague or tomorrow's agent session, starts with no
+memory too. The method is a way of making sure the design holds what they will need.
 
 ## What a project looks like once it has adopted this
 
@@ -102,22 +102,22 @@ bootstrap            adopt the method in a project that already exists
 harness/             everything that is copied into a project
   FRAMEWORK.md       the method, in full: read this first
   cmd/check          the checker: files accounted for, named tests exist, ids land, notes have their parts
-  cmd/goldfish       two sessions with no memory read the design: comprehension, readiness
-  cmd/elephant       reverse-engineer the design of existing code: survey, skeleton, draft
+  cmd/coldread       two sessions with no memory read the design: comprehension, readiness
+  cmd/reverse       reverse-engineer the design of existing code: survey, skeleton, draft
   cmd/subject        is a commit's subject a Conventional Commit (optional, per repository)
   cmd/sync           at a root: clone and fetch the repositories its design lists
   safe-push          the one way a branch is pushed: check, push, open the pull request
   hooks/             pre-push and commit-msg, and their installer
   templates/         the design, a change note, CLAUDE.md, the CI workflow
-  goldfish/          the two prompts and their settings
-  elephant/          the reverse-engineering prompt and its settings
+  coldread/          the two prompts and their settings
+  reverse/           the reverse-engineering prompt and its settings
 design/              this repository's own design, held to the same checker
 ```
 
 ## Adopt it in an existing project
 
 You need git and the [Go toolchain](https://go.dev/dl/) (1.22 or later), whatever language
-the project is written in. The goldfish and the elephant's draft also need the
+the project is written in. The cold read and the drafting session also need the
 [`claude` command-line tool](https://claude.com/claude-code), signed in. Pull requests are
 opened with `gh`.
 
@@ -135,9 +135,9 @@ and commits nothing. When it finishes, the checker passes.
 Then, in the project:
 
 ```
-go -C harness run ./cmd/elephant draft               # 1. draft the design from the code
-$EDITOR design/DESIGN.md                             # 2. read all of it; answer every (inferred) and TODO(elephant)
-go -C harness run ./cmd/goldfish -only comprehension # 3. can a stranger explain the repository from it?
+go -C harness run ./cmd/reverse draft               # 1. draft the design from the code
+$EDITOR design/DESIGN.md                             # 2. read all of it; answer every (inferred) and TODO(design)
+go -C harness run ./cmd/coldread -only comprehension # 3. can a stranger explain the repository from it?
 git checkout -b feat/adopt-the-design                # 4. commit, and push through the one door
 git add -A && git commit -m "design: this repository has a design, and a machine holds the code to it"
 harness/safe-push
@@ -150,7 +150,7 @@ Step 2 is the one that matters. A draft becomes the design when a person has rea
 answered each mark, and the checker counts the marks on every run until none is left.
 
 To use an agent of your own instead of the headless session, `go -C harness run
-./cmd/elephant prompt` prints the same instructions and survey for you to hand over.
+./cmd/reverse prompt` prints the same instructions and survey for you to hand over.
 
 Last, protect `main` on the server: require a pull request and the `harness` status check.
 On GitHub, as an administrator of the repository:
@@ -179,7 +179,7 @@ Bootstrap sees that `billing` sits under a root and adopts it as nested. It copi
 second harness: `billing` runs the root's as `../harness`. Its `CLAUDE.md` says to read
 the root's rules first, its design skeleton takes the root's commit convention and note
 sections and says how the root's decisions are cited (`project/ADR-0004`), and its CI
-checks the root out around it. The elephant's draft for `billing` is handed the root's
+checks the root out around it. The drafting session for `billing` is handed the root's
 design, and told that the definitions live in `contracts`. Bootstrap then prints the
 entry to add to the root's map, the `repos:` list in its design:
 
@@ -215,13 +215,13 @@ write the design first, then the code it describes.
 go -C harness run ./cmd/check                 # does the code still agree with the design
 cp harness/templates/change.md design/changes/$(date +%F)-what-changes.md
                                               # every change starts with a note: problem, plan, alternatives, files
-go -C harness run ./cmd/goldfish -change-file design/changes/<the note>.md -out goldfish.md
+go -C harness run ./cmd/coldread -change-file design/changes/<the note>.md -out coldread.md
                                               # when the design change is material: advice for whoever merges
 harness/safe-push                             # check, push, open the pull request; a person merges
 ```
 
 `harness/FRAMEWORK.md` is the whole method: how the document is written, what the machine
-checks and deliberately does not, how a change lands, and why the goldfish advises and
+checks and deliberately does not, how a change lands, and why a cold read advises and
 never gates.
 
 ## Keeping a project's harness current
@@ -241,14 +241,14 @@ everything else.
 
 - It does not judge whether a design is good. The checker proves four small things and is
   always right about them; everything else is read by a person.
-- It does not let a model gate a merge, or admit anything. The goldfish advises, the
-  elephant proposes, a person decides.
+- It does not let a model gate a merge, or admit anything. A cold read advises, a
+  draft proposes, a person decides.
 - It reads definitions from protobuf only. A contracts repository in another format has
   its notes held to the `servers` block and nothing scanned.
 - It does not open pull requests anywhere but GitHub; elsewhere, `harness/safe-push
   --no-pr` pushes and you open it yourself.
 - The headless sessions are Claude's command-line tool. The prompts are plain files
-  beside the settings, and `elephant prompt` exists so that any agent can do the drafting.
+  beside the settings, and `reverse prompt` exists so that any agent can do the drafting.
 
 ## Licence
 

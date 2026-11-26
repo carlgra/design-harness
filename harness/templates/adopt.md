@@ -17,7 +17,7 @@ note here, in four parts.
 
 The first design is reverse-engineered: a survey of what a machine can see, then a draft
 by a session that read the repository, with everything it could not find in the code
-marked `(inferred)` or `TODO(elephant)`. A person answers each mark; until then the design
+marked `(inferred)` or `TODO(design)`. A person answers each mark; until then the design
 is a draft and the checker says so on every run.
 
 ## Alternatives rejected
@@ -31,7 +31,7 @@ is a draft and the checker says so on every run.
 
 - `design/DESIGN.md`: the design.
 - `design/changes/`: one note per change, this one first.
-- `{{HARNESS}}/`: the checker, goldfish, elephant, the push script, the hooks and the
+- `{{HARNESS}}/`: the checker, the cold read, the reverse command, the push script, the hooks and the
   method itself, `{{HARNESS}}/FRAMEWORK.md`.
 - `CLAUDE.md`: how an agent works here.
 - `.github/workflows/harness.yml`: the checker as the status check `main` requires.

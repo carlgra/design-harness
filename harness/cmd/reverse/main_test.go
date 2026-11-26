@@ -46,7 +46,7 @@ var existing = map[string]string{
 	"design/old-notes.md":        "# Notes from before\n",
 }
 
-const template = "---\nfiles:\n{{FILES}}\ntests: []\n{{VALIDATE}}\n{{COMMITS}}\nnotes:\n  from: {{DATE}}\n  sections: {{SECTIONS}}\n{{REPOS}}\n---\n\n# {{NAME}}\n\n" + SkeletonMark + "\n\n## Scope\n\n{{PARENT}}\n\nTODO(elephant)\n"
+const template = "---\nfiles:\n{{FILES}}\ntests: []\n{{VALIDATE}}\n{{COMMITS}}\nnotes:\n  from: {{DATE}}\n  sections: {{SECTIONS}}\n{{REPOS}}\n---\n\n# {{NAME}}\n\n" + SkeletonMark + "\n\n## Scope\n\n{{PARENT}}\n\nTODO(design)\n"
 
 // The survey reports what is there and decides nothing: every file falls
 // under a glob it proposes, the tests it lists are ones that exist, the gate
@@ -218,8 +218,8 @@ func TestTheProjectsRulesReplaceOnlyTheirOwnSection(t *testing.T) {
 // shape to fill, without the mark that would make its own reply a skeleton.
 func TestADraftingSessionIsHandedTheInstructionsTheSurveyAndTheShape(t *testing.T) {
 	harness := t.TempDir()
-	os.MkdirAll(filepath.Join(harness, "elephant"), 0o755)
-	os.WriteFile(filepath.Join(harness, "elephant", "reverse.md"), []byte("INSTRUCTIONS\n"), 0o644)
+	os.MkdirAll(filepath.Join(harness, "reverse"), 0o755)
+	os.WriteFile(filepath.Join(harness, "reverse", "reverse.md"), []byte("INSTRUCTIONS\n"), 0o644)
 	repo := repoWith(t, existing)
 	s := survey(repo, nil, nil, "2026-01-02")
 	p, err := prompt(harness, repo.Root, s, template)
@@ -290,8 +290,8 @@ func TestANestedRepositoryTakesItsRulesFromTheRoot(t *testing.T) {
 		t.Error("the repository was listed as its own sibling")
 	}
 	harness := t.TempDir()
-	os.MkdirAll(filepath.Join(harness, "elephant"), 0o755)
-	os.WriteFile(filepath.Join(harness, "elephant", "reverse.md"), []byte("INSTRUCTIONS\n"), 0o644)
+	os.MkdirAll(filepath.Join(harness, "reverse"), 0o755)
+	os.WriteFile(filepath.Join(harness, "reverse", "reverse.md"), []byte("INSTRUCTIONS\n"), 0o644)
 	p, err := prompt(harness, repo.Root, s, template)
 	if err != nil || !strings.Contains(p, "The design of `project`, the root this repository is nested under") || !strings.Contains(p, "### ADR-0004 — interfaces live in contracts") {
 		t.Errorf("a drafting session was not handed the root's design (%v)", err)

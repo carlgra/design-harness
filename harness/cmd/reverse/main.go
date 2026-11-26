@@ -1,22 +1,22 @@
-// Command elephant writes down what a repository that already exists has
-// never said: its design. An elephant never forgets, and design/DESIGN.md is
-// the one thing here that must not; this command is how a repository whose
+// Command reverse writes down what a repository that already exists has
+// never said: its design. design/DESIGN.md is the one thing here that must
+// not be forgotten; this command is how a repository whose
 // design lives in its code and in people's heads gets one.
 //
 // It works in steps, each less mechanical than the last:
 //
-//	go -C harness run ./cmd/elephant survey     # what a machine can say: files, tests, gate, documents, commits
-//	go -C harness run ./cmd/elephant skeleton   # write design/DESIGN.md with a spine that accounts for every file, and questions
-//	go -C harness run ./cmd/elephant prompt     # print what a drafting session is handed, to give to an agent of your own
-//	go -C harness run ./cmd/elephant draft      # one session reads the repository and drafts the design and the project's rules
+//	go -C harness run ./cmd/reverse survey     # what a machine can say: files, tests, gate, documents, commits
+//	go -C harness run ./cmd/reverse skeleton   # write design/DESIGN.md with a spine that accounts for every file, and questions
+//	go -C harness run ./cmd/reverse prompt     # print what a drafting session is handed, to give to an agent of your own
+//	go -C harness run ./cmd/reverse draft      # one session reads the repository and drafts the design and the project's rules
 //
 // The survey decides nothing. The draft is a session that can read the
 // repository and write nothing: this command writes what it replies, to
 // design/DESIGN.md and to the project's section of CLAUDE.md, and only over a
 // skeleton unless -force is given. What the session could not find in the
-// repository it marks "(inferred)" or TODO(elephant), and a person answers
+// repository it marks "(inferred)" or TODO(design), and a person answers
 // each before the design is the design. The model is in
-// harness/elephant/elephant.yaml; the prompt is beside it.
+// harness/reverse/reverse.yaml; the prompt is beside it.
 package main
 
 import (
@@ -37,15 +37,15 @@ import (
 const (
 	// SkeletonMark is the line a skeleton carries and a design does not: a
 	// draft may replace a document that has it.
-	SkeletonMark = "<!-- elephant:skeleton -->"
+	SkeletonMark = "<!-- design:skeleton -->"
 	// DesignHeader and RulesHeader open the two parts of a drafting
 	// session's reply.
 	DesignHeader = "=== design/DESIGN.md ==="
 	RulesHeader  = "=== CLAUDE.md ==="
 	// ProjectBegin and ProjectEnd bracket the part of CLAUDE.md that is the
 	// project's own, which a draft writes; everything outside is left alone.
-	ProjectBegin = "<!-- elephant:project:begin -->"
-	ProjectEnd   = "<!-- elephant:project:end -->"
+	ProjectBegin = "<!-- design:project:begin -->"
+	ProjectEnd   = "<!-- design:project:end -->"
 )
 
 func main() {
@@ -53,7 +53,7 @@ func main() {
 		usage()
 	}
 	step := os.Args[1]
-	fs := flag.NewFlagSet("elephant "+step, flag.ExitOnError)
+	fs := flag.NewFlagSet("reverse "+step, flag.ExitOnError)
 	rootFlag := fs.String("root", "", "the project (default: the git repository the command was typed in)")
 	forceFlag := fs.Bool("force", false, "replace a design/DESIGN.md that is no longer a skeleton")
 	claudeFlag := fs.String("claude", "claude", "the claude command-line tool")
@@ -94,7 +94,7 @@ func main() {
 		if err := write(docPath, s.Skeleton(string(template))); err != nil {
 			fatal(err)
 		}
-		fmt.Printf("elephant: wrote %s: a spine that accounts for all %d files, and every section still a question\n", design.DocPath, s.Files)
+		fmt.Printf("reverse: wrote %s: a spine that accounts for all %d files, and every section still a question\n", design.DocPath, s.Files)
 		// Adopting the method is itself a change, so it has a note: the
 		// first, unless the repository already keeps notes.
 		changes := filepath.Join(root, "design", "changes")
@@ -107,9 +107,9 @@ func main() {
 			if err := write(filepath.Join(changes, name), s.AdoptionNote(string(adopt))); err != nil {
 				fatal(err)
 			}
-			fmt.Printf("elephant: wrote design/changes/%s\n", name)
+			fmt.Printf("reverse: wrote design/changes/%s\n", name)
 		}
-		fmt.Printf("elephant: next, draft it:  go -C %s run ./cmd/elephant draft\n", s.HarnessPath())
+		fmt.Printf("reverse: next, draft it:  go -C %s run ./cmd/reverse draft\n", s.HarnessPath())
 
 	case "where":
 		// Where the repository sits, for a script to read: one key=value a
@@ -133,7 +133,7 @@ func main() {
 		if err := replaceable(docPath, *forceFlag); err != nil {
 			fatal(err)
 		}
-		set, err := session.Load(filepath.Join(harness, "elephant", "elephant.yaml"))
+		set, err := session.Load(filepath.Join(harness, "reverse", "reverse.yaml"))
 		if err != nil {
 			fatal(err)
 		}
@@ -141,7 +141,7 @@ func main() {
 		if err != nil {
 			fatal(err)
 		}
-		fmt.Printf("elephant: %s: one session, model %s, reading %d files and writing none\n", s.Name, set.Model, s.Files)
+		fmt.Printf("reverse: %s: one session, model %s, reading %d files and writing none\n", s.Name, set.Model, s.Files)
 		reply, err := session.Claude(*claudeFlag, root, "Read", "Grep", "Glob")(set.Model, p)
 		if err != nil {
 			fatal(err)
@@ -149,7 +149,7 @@ func main() {
 		doc, rules, err := split(reply)
 		if err != nil {
 			// What a session said was paid for; it is kept, not lost.
-			kept := filepath.Join(root, "design", "elephant-reply.md")
+			kept := filepath.Join(root, "design", "reverse-reply.md")
 			if werr := write(kept, reply); werr == nil {
 				err = fmt.Errorf("%w; the reply is kept in %s", err, design.Rel(root, kept))
 			}
@@ -158,20 +158,20 @@ func main() {
 		if err := write(docPath, doc); err != nil {
 			fatal(err)
 		}
-		fmt.Printf("elephant: wrote %s\n", design.DocPath)
+		fmt.Printf("reverse: wrote %s\n", design.DocPath)
 		if rules != "" {
 			claude := filepath.Join(root, "CLAUDE.md")
 			old, _ := os.ReadFile(claude)
 			if err := write(claude, project(string(old), rules)); err != nil {
 				fatal(err)
 			}
-			fmt.Println("elephant: wrote the project's section of CLAUDE.md")
+			fmt.Println("reverse: wrote the project's section of CLAUDE.md")
 		}
-		fmt.Printf("elephant: %d place(s) are marked (inferred) and %d TODO(elephant): a person answers each.\n",
-			strings.Count(doc, "(inferred)"), strings.Count(doc, "TODO(elephant)"))
-		fmt.Println("elephant: next:")
+		fmt.Printf("reverse: %d place(s) are marked (inferred) and %d TODO(design): a person answers each.\n",
+			strings.Count(doc, "(inferred)"), strings.Count(doc, "TODO(design)"))
+		fmt.Println("reverse: next:")
 		fmt.Printf("    go -C %s run ./cmd/check -validate=false       # is every file accounted for, does every named test exist\n", s.HarnessPath())
-		fmt.Printf("    go -C %s run ./cmd/goldfish -only comprehension # can a session with no memory explain the repository from it\n", s.HarnessPath())
+		fmt.Printf("    go -C %s run ./cmd/coldread -only comprehension # can a session with no memory explain the repository from it\n", s.HarnessPath())
 
 	default:
 		usage()
@@ -179,12 +179,12 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: elephant survey|skeleton|prompt|draft|where [-root DIR] [-force] [-claude BIN]")
+	fmt.Fprintln(os.Stderr, "usage: reverse survey|skeleton|prompt|draft|where [-root DIR] [-force] [-claude BIN]")
 	os.Exit(2)
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "elephant:", err)
+	fmt.Fprintln(os.Stderr, "reverse:", err)
 	os.Exit(2)
 }
 
@@ -216,7 +216,7 @@ func replaceable(docPath string, force bool) error {
 // the survey, the shape to fill and, for a repository nested under a root,
 // the root's design.
 func prompt(harness, root string, s Survey, template string) (string, error) {
-	instructions, err := os.ReadFile(filepath.Join(harness, "elephant", "reverse.md"))
+	instructions, err := os.ReadFile(filepath.Join(harness, "reverse", "reverse.md"))
 	if err != nil {
 		return "", err
 	}

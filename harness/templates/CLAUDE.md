@@ -30,7 +30,7 @@ Read `README.md`, then `design/DESIGN.md`. The method this repository works by i
 
 Run the checker, `go -C harness run ./cmd/check`, then read `design/DESIGN.md` for the
 part you are about to change. If what you need is not there, that is the first thing to
-fix. When a design change is material, `go -C harness run ./cmd/goldfish -change "..."`
+fix. When a design change is material, `go -C harness run ./cmd/coldread -change "..."`
 asks two sessions with no memory whether the document explains the repository and whether
 the change could be built from it alone; paste what they say into the pull request. It is
 advice for whoever merges, not a gate.
@@ -44,7 +44,7 @@ harness/hooks/install
 
 ## This project
 
-<!-- elephant:project:begin -->
-TODO(elephant): how to build, test and run this project, and what an agent would get wrong
-here without being told. `go -C harness run ./cmd/elephant draft` writes a first version.
-<!-- elephant:project:end -->
+<!-- design:project:begin -->
+TODO(design): how to build, test and run this project, and what an agent would get wrong
+here without being told. `go -C harness run ./cmd/reverse draft` writes a first version.
+<!-- design:project:end -->

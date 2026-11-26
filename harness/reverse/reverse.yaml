@@ -1,4 +1,4 @@
-# Settings for elephant's draft, the one session that reads the repository
+# Settings for reverse's draft, the one session that reads the repository
 # and drafts its design.
 #
 # model: the model that runs the session; any name the claude command-line

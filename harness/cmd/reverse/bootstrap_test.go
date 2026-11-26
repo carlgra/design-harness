@@ -310,12 +310,12 @@ func TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects(t *testing
 	// written its own section and set its own model, and someone has
 	// changed the harness in place.
 	stale := strings.Replace(fresh, "1. **Design before code.**", "1. **A RULE FROM AN OLD VERSION.**", 1)
-	stale = strings.Replace(stale, "TODO(elephant): how to build", "Build with make. TODO(elephant): how to build", 1)
+	stale = strings.Replace(stale, "TODO(design): how to build", "Build with make. TODO(design): how to build", 1)
 	if stale == fresh || !strings.Contains(stale, "Build with make.") {
 		t.Fatalf("the fixture did not change the file:\n%s", fresh)
 	}
 	write("CLAUDE.md", stale+"\n## After\n\nThe project's last word.\n")
-	write("harness/goldfish/goldfish.yaml", "model: the-projects-own\nverdict: \"VERDICT:\"\n")
+	write("harness/coldread/coldread.yaml", "model: the-projects-own\nverdict: \"VERDICT:\"\n")
 	write("harness/FRAMEWORK.md", "# changed in place\n")
 
 	out := run(t, "sh", script, "--update", root)
@@ -331,7 +331,7 @@ func TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects(t *testing
 	if strings.Count(got, "design-harness:begin") != 1 || strings.Count(got, "design-harness:end") != 1 {
 		t.Errorf("the marks are not as they were:\n%s", got)
 	}
-	if !strings.Contains(read("harness/goldfish/goldfish.yaml"), "the-projects-own") {
+	if !strings.Contains(read("harness/coldread/coldread.yaml"), "the-projects-own") {
 		t.Error("an update replaced the project's settings")
 	}
 	if strings.Contains(read("harness/FRAMEWORK.md"), "changed in place") {
