@@ -99,9 +99,9 @@ or, where it is one of several repositories under a root, uses the root's copy
 
 ## How it works
 
-Two names carry the method.
+Two things carry the method.
 
-**The elephant** is `design/DESIGN.md`, the one thing in a repository that must not be
+**The design** is `design/DESIGN.md`, the one thing in a repository that must not be
 forgotten. It has a body, read by people and by model sessions, and a spine, its YAML
 frontmatter, read by a machine. The spine says which paths hold the code (`files:`),
 which tests must exist (`tests:`), the repository's own gate (`validate:`), whether a
@@ -113,7 +113,7 @@ they are how a repository works rather than its code: `README.md`, `CLAUDE.md`,
 `.gitattributes`. A glob ending `/**` is everything under a directory; any other is a
 path in which `*` does not cross a `/`.
 
-**The goldfish** is a model session with no memory, handed the document and nothing
+**A cold read** is a model session with no memory, handed the document and nothing
 else.
 
 The parts, all under `harness/`:
@@ -144,23 +144,23 @@ The parts, all under `harness/`:
   invariant by a list item or heading that opens with its id, `- **INV-012** — …`;
   any other appearance is a citation, and one written `other-repository/ADR-0007` is
   that repository's and is not looked up. Then the checker runs `validate:`. It also
-  counts the places the document still says `TODO(elephant)` outside backticks, the
+  counts the places the document still says `TODO(design)` outside backticks, the
   mark a draft leaves for a person, and reports the count without failing.
-- `cmd/goldfish` puts two questions, comprehension and readiness, each to its own
+- `cmd/coldread` puts two questions, comprehension and readiness, each to its own
   session. A session is the `claude` command-line tool in print mode, started with no
   tools and no persisted session, in the system's temporary directory so that it reads
-  no project file. It is handed a prompt from `harness/goldfish/`, the design, and for
+  no project file. It is handed a prompt from `harness/coldread/`, the design, and for
   readiness the change: whatever text it was given with `-change`, or the contents of
   the file named with `-change-file`, usually the change's note. The command reads
   `VERDICT: PASS` or `VERDICT: FAIL` from the last line of each reply, prints the
   replies and can write them as markdown for a pull request. It exits non-zero when a
   session fails, so that a person's own script can tell; nothing in the harness reads
   that.
-- `cmd/elephant` writes down the design of a repository that has code and no design.
+- `cmd/reverse` writes down the design of a repository that has code and no design.
   `survey` lists what a machine can see. `skeleton` writes a `design/DESIGN.md` whose
   spine accounts for every file and whose body is questions. `draft` starts one session
   in the repository with the tools that read, `Read`, `Grep` and `Glob`, and no other,
-  hands it `harness/elephant/reverse.md`, the survey and the shape to fill, and writes
+  hands it `harness/reverse/reverse.md`, the survey and the shape to fill, and writes
   its reply to `design/DESIGN.md` and to the project's section of `CLAUDE.md`. `prompt`
   prints what that session would be handed. A fifth step, `where`, is for scripts: it
   prints where a repository sits as `key=value` lines: `root=`, the root's name, which is
@@ -169,10 +169,10 @@ The parts, all under `harness/`:
   root's map lists a contracts repository beside it, `contracts_path=`, its path from
   the root, and `contracts_remote=`, its remote as the map gives it. Under no root it
   prints nothing. `bootstrap` reads the last two to write a CI workflow. A skeleton is known by one line it carries,
-  the comment `<!-- elephant:skeleton -->`; a draft does not carry it, so once a draft
+  the comment `<!-- design:skeleton -->`; a draft does not carry it, so once a draft
   is written the document counts as someone's and a second draft needs `-force`. The
   project's section of `CLAUDE.md` is what lies between the comments
-  `<!-- elephant:project:begin -->` and `<!-- elephant:project:end -->`. The method's
+  `<!-- design:project:begin -->` and `<!-- design:project:end -->`. The method's
   own rules sit above it between `<!-- design-harness:begin -->` and
   `:end -->`, come from `templates/CLAUDE.md`, and are never written by a session.
 - `internal/session` is the one place a model is started: the arguments, the settings
@@ -381,7 +381,7 @@ root's found on disk is not looked up.
   The root's map is read at check time for this and for nothing else: to find which
   repository is which. No rule is taken from the root's spine when a nested repository
   is checked (INV-016).
-- `cmd/elephant`, in a nested repository, says in the survey where it sits and which
+- `cmd/reverse`, in a nested repository, says in the survey where it sits and which
   siblings the root lists; writes a skeleton whose spine takes the root's `commits:`
   and the sections the root asks of a note, and whose scope says how the root is cited;
   and hands a drafting session the root's design after the shape, to cite and not
@@ -401,7 +401,7 @@ hooks, and runs the checker. Each of those is skipped when the thing is already 
 and a `harness/` directory that is not this harness stops it before anything is
 written. `--update` is the one thing that replaces, and it replaces what is the
 harness's: it swaps a project's `harness/` for this one, whole, keeping only the
-project's two settings files, `goldfish/goldfish.yaml` and `elephant/elephant.yaml`;
+project's two settings files, `coldread/coldread.yaml` and `reverse/reverse.yaml`;
 and it rewrites the method's rules in `CLAUDE.md`, the lines between their two marks,
 from the current template, leaving every line outside the marks as it was. In a
 repository nested under a root there is no harness to swap, so `--update` there
@@ -467,16 +467,16 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   section the spine asks of a note, each with something under it; a note dated before
   is never reread. *(`test: TestADesignNoteCarriesItsParts`,
   `test: TestADesignSaysWhatItsNotesCarry`)*
-- **INV-005** — A goldfish is handed its prompt, the design and, for readiness, the
+- **INV-005** — A cold-read session is handed its prompt, the design and, for readiness, the
   change, and nothing else; it is started with no tools. *(`test:
   TestASessionIsHandedItsPromptTheDesignAndNothingElse`, `test:
   TestASessionIsStartedWithExactlyTheToolsItIsGiven`; what the `claude` tool itself
   adds to a session is read at review)*
-- **INV-006** — The goldfish command judges nothing: a verdict is the last line of a
+- **INV-006** — The `coldread` command judges nothing: a verdict is the last line of a
   reply in the exact form, anything else is a failure, and no verdict is read by any
   other command. *(`test: TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`)*
 - **INV-007** — The session that drafts a design can read and cannot write. Only the
-  `elephant` command writes, only `design/DESIGN.md` and the marked section of
+  `reverse` command writes, only `design/DESIGN.md` and the marked section of
   `CLAUDE.md`, and never over a design that is no longer a skeleton unless forced.
   *(`test: TestASessionIsStartedWithExactlyTheToolsItIsGiven`, `test:
   TestADraftNeverReplacesADesignSomeoneWrote`, `test:
@@ -500,7 +500,7 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   their marks in `CLAUDE.md`; and nothing else.
   *(`test: TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`,
   `test: TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`)*
-- **INV-010** — A design that still says `TODO(elephant)` is reported as unfinished on
+- **INV-010** — A design that still says `TODO(design)` is reported as unfinished on
   every run of the checker, and is not refused for it. *(`test:
   TestAnUnfinishedDesignIsSaidToBeUnfinished`)*
 - **INV-011** — Nothing reaches `main` except through a pull request that passed the
@@ -593,7 +593,7 @@ invariants, decisions and the map of files. It is edited in place when something
 changes, with the reason in the commit, and git is its history. A decision keeps its id
 for life.
 
-One file because the document's reader is handed all of it at once, a goldfish most of
+One file because the document's reader is handed all of it at once, a cold read most of
 all, and a design spread over many files is one nobody can be handed. Current state
 because a reader should never have to work out which of two statements still holds.
 
@@ -622,17 +622,17 @@ it. The value of the small check is that a FAIL is never argued with.
   invariant a proof in a fixed grammar. It measures form, is satisfied by filler, and
   refuses honest documents that are shaped differently.
 - **Have a model judge the design in CI.** See ADR-0003.
-- **Fail on `TODO(elephant)`.** The adoption pull request is itself pushed through the
+- **Fail on `TODO(design)`.** The adoption pull request is itself pushed through the
   checker, with the marks still in it; refusing them would make the method impossible
   to adopt through its own door. They are counted and reported instead (INV-010).
 
-### ADR-0003 — The goldfish advises; it never gates
+### ADR-0003 — A cold read advises; it never gates
 
 Two sessions with no memory and no tools are handed the design and one question each.
 Their verdicts are printed and written for the pull request, for the person who merges.
 Nothing reads a verdict to allow or refuse anything. The command is run by hand when a
 change to a design is material. The model, the most a session may spend in dollars and
-the form of the verdict line are values in `harness/goldfish/goldfish.yaml`; the questions are the two prompt files
+the form of the verdict line are values in `harness/coldread/coldread.yaml`; the questions are the two prompt files
 beside it.
 
 No tools and no memory because the question is whether the document is enough, and a
@@ -648,7 +648,7 @@ particular change to guesswork.
   passes proves nothing while a person waits on it.
 - **A session with the repository to read.** It passes designs that say too little,
   because it fills the gaps from the code.
-- **Hand a nested repository's goldfish the root's design too.** It would pass a
+- **Hand a nested repository's cold read the root's design too.** It would pass a
   design that leans on the root without saying what it relies on. A session is handed
   the one design, whichever repository it is (ADR-0009).
 - **One question.** Comprehension alone passes a design that explains the present and
@@ -661,15 +661,15 @@ a person confirms. The survey reports and decides nothing. The drafting session 
 given the tools that read and no others, and the command, not the session, writes its
 reply. The session is told to mark what it could not find in the repository, in two
 ways. A reason no file states ends `(inferred)`: a claim to be confirmed. Something it
-could not know at all is written `TODO(elephant)` with the question, and alternatives
-recorded nowhere are written `Not recorded. TODO(elephant)` rather than invented. A draft is written only over a skeleton; a design a
+could not know at all is written `TODO(design)` with the question, and alternatives
+recorded nowhere are written `Not recorded. TODO(design)` rather than invented. A draft is written only over a skeleton; a design a
 person has edited is replaced only with `-force`. The gate and the commit convention
 are never switched on by a survey, the convention excepted when the history already
-follows it or, under a root, when the root's spine asks for it (INV-008). The model is a value in `harness/elephant/elephant.yaml`, and no session is given a spending cap, since one stopped short of the end has answered nothing; what
-the session is told is `harness/elephant/reverse.md`.
+follows it or, under a root, when the root's spine asks for it (INV-008). The model is a value in `harness/reverse/reverse.yaml`, and no session is given a spending cap, since one stopped short of the end has answered nothing; what
+the session is told is `harness/reverse/reverse.md`.
 
 A wrong draft is faster to correct than a blank page is to fill, so the draft is worth
-having; but a design nobody has read is a guess. So the questions, the `TODO(elephant)`
+having; but a design nobody has read is a guess. So the questions, the `TODO(design)`
 marks, are counted by the checker on every run until a person has answered each, and
 the `(inferred)` claims stay in the text for that person to confirm or correct as they
 read; the checker does not count those, because a confirmed inference and an
@@ -696,7 +696,7 @@ The commands are run with `go -C harness run`, so the checker, the hooks and the
 need the Go toolchain and git and nothing else, whatever language the project is
 written in. Three things need more, and say so when it is missing: opening a pull request
 needs GitHub's `gh`, so does reading the server's protection where the spine asks for
-it (ADR-0011), and the goldfish and the elephant's draft need the `claude`
+it (ADR-0011), and the cold read and the drafting session need the `claude`
 command-line tool. The scripts set `GOWORK=off` so that
 a project's own Go workspace does not claim the module. Updating is running
 `bootstrap --update`, which replaces the copy and keeps the project's settings.
@@ -875,6 +875,29 @@ and, to be of use, an administrator among those who push.
 - **Replace the protection with a known-good one.** A team's approvals, restrictions
   and other checks would be wiped by a command that said it was adding one.
 
+
+### ADR-0012 — The commands are named for what they do
+
+The command that drafts a design from existing code is `cmd/reverse`, and the one that
+puts a design to sessions with no memory is `cmd/coldread`; their prompts and settings are
+in `harness/reverse/` and `harness/coldread/`. A place a draft could not answer is marked
+`TODO(design)`, and the marks the commands leave in a project's files are
+`<!-- design:skeleton -->` and `<!-- design:project:begin -->` / `:end -->`. They were
+`elephant` and `goldfish` until 2026-11-26. `bootstrap --update` carries a project's
+settings across from the old names and renames the old marks in its `CLAUDE.md` and
+design. A name says what a thing does, so that a reader needs no story to follow a
+command line; the owner found the two animals confused a reader who met them cold.
+
+#### Alternatives rejected
+
+- **Keep the animals and explain them in the README.** A name that needs its
+  explanation read first is a cost paid by every reader, and the explanation was there
+  and did not land.
+- **Keep the commands' names and drop the animals from the prose only.** The README
+  cannot show a command line without the name, so the question comes back there.
+- **`draft` for the first command.** Its last step is `draft`, and `draft draft` reads
+  as a mistake; `reverse` is what the README already called the work.
+
 ## Files
 
 | File | Purpose |
@@ -886,13 +909,13 @@ and, to be of use, an administrator among those who push.
 | `harness/internal/session/` | Starts a model session through the `claude` tool with exactly the tools it is given; reads a settings file. |
 | `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007). |
 | `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. |
-| `harness/cmd/goldfish/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. |
-| `harness/cmd/elephant/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. |
+| `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. |
+| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
 | `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the spine's `protection:`, the `gh` tool and what is printed. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
-| `harness/goldfish/` | `comprehension.md` and `readiness.md`, the two prompts; `goldfish.yaml`, the model and the verdict prefix. |
-| `harness/elephant/` | `reverse.md`, what a drafting session is told, which under a root includes citing the root and, beside a contracts repository, filling `serves:` for each definition it serves that it can name a test for; `elephant.yaml`, the model and budget. |
+| `harness/coldread/` | `comprehension.md` and `readiness.md`, the two prompts; `coldread.yaml`, the model and the verdict prefix. |
+| `harness/reverse/` | `reverse.md`, what a drafting session is told, which under a root includes citing the root and, beside a contracts repository, filling `serves:` for each definition it serves that it can name a test for; `reverse.yaml`, the model and budget. |
 | `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills, `{{NAME}}`, `{{DATE}}`, `{{FILES}}`, `{{VALIDATE}}`, `{{COMMITS}}`, `{{SECTIONS}}`, `{{REPOS}}` and `{{PARENT}}`; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow; `CLAUDE.nested.md` and `harness.nested.yml`, the same two for a repository under a root (ADR-0009). For ADR-0010, `change.md` carries a comment, for contracts repositories only, showing the `servers` block; `CLAUDE.nested.md` states both halves of the rule; and `harness.nested.yml` has one line, `{{CONTRACTS_CHECKOUT}}`, that bootstrap replaces with a checkout step for the contracts repository or removes. |
 | `harness/safe-push` | The one door (ADR-0006). |
 | `harness/safe_push_test.go` | Runs the real `safe-push`, without a pull request, against a bare remote it throws away: one test for each thing the script must do or refuse. The test of ADR-0011 puts a stand-in for `gh` on the path and the remote at a path that reads as a GitHub address. The only Go file at the module's root. |
@@ -908,7 +931,7 @@ Paths a fault would travel, and the test that walks each:
 - a section a repository adds to its notes is required from its date — `TestADesignSaysWhatItsNotesCarry`
 - an unfinished design is reported and not refused — `TestAnUnfinishedDesignIsSaidToBeUnfinished`
 - another checkout of a repository is not taken for its files — `TestAWorktreeIsNotANestedRepository`
-- a goldfish is handed the design and the change and nothing else — `TestASessionIsHandedItsPromptTheDesignAndNothingElse`
+- a cold-read session is handed the design and the change and nothing else — `TestASessionIsHandedItsPromptTheDesignAndNothingElse`
 - a reply that does not end in the verdict form is not a pass — `TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`
 - a session is started with the tools it was given and no other — `TestASessionIsStartedWithExactlyTheToolsItIsGiven`
 - a survey invents nothing and misses no file — `TestTheSurveySaysWhatIsThereAndDecidesNothing`

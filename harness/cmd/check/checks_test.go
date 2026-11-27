@@ -110,14 +110,14 @@ func TestAnIdIsDefinedOnceAndEveryCitationLands(t *testing.T) {
 // and the mark spoken of, as code, is not one left.
 func TestAnUnfinishedDesignIsSaidToBeUnfinished(t *testing.T) {
 	repo := repoWith(t, design.Design{Files: []string{"app/**"}}, map[string]string{"app/main.go": "package main"})
-	repo.Body = "## Scope\n\nTODO(elephant): say what this is for.\n\n### ADR-0001 — Go (inferred) TODO(elephant)\n\nA mark is written `TODO(elephant)`, or `Not recorded. TODO(elephant)`.\n"
+	repo.Body = "## Scope\n\nTODO(design): say what this is for.\n\n### ADR-0001 — Go (inferred) TODO(design)\n\nA mark is written `TODO(design)`, or `Not recorded. TODO(design)`.\n"
 	res := runChecks(repo)
 	if res.failed() {
 		t.Fatalf("the mark is not a refusal: %v", res.Failures)
 	}
 	var out bytes.Buffer
 	res.report(&out, repo)
-	if !strings.Contains(out.String(), "still says TODO(elephant) in 2 place(s)") || !strings.Contains(out.String(), "harness: OK") {
+	if !strings.Contains(out.String(), "still says TODO(design) in 2 place(s)") || !strings.Contains(out.String(), "harness: OK") {
 		t.Fatalf("the report does not say the design is unfinished:\n%s", out.String())
 	}
 }

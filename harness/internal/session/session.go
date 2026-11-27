@@ -1,6 +1,6 @@
 // Package session runs one model session with one prompt and answers its
-// reply. Both animals use it: goldfish hands a session the design and no
-// tools, so that it has the document and nothing else; elephant hands one the
+// reply. Two commands use it: coldread hands a session the design and no
+// tools, so that it has the document and nothing else; reverse hands one the
 // repository to read, and nothing to write with.
 package session
 
@@ -18,7 +18,7 @@ import (
 type Settings struct {
 	// Model runs the sessions and is recorded with what each said.
 	Model string `yaml:"model"`
-	// Verdict is the prefix of the line a goldfish must end its reply with.
+	// Verdict is the prefix of the line a cold-read session must end its reply with.
 	Verdict string `yaml:"verdict"`
 }
 

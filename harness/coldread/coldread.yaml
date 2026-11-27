@@ -1,4 +1,4 @@
-# Settings for goldfish, the two questions a fresh session is asked by hand.
+# Settings for the cold read, the two questions a fresh session is asked by hand.
 #
 # model: the model that runs the sessions, the same for both and recorded
 #   with each verdict; any name the claude command-line tool accepts.

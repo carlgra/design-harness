@@ -10,17 +10,18 @@ in the heads of the people who wrote it, are lost every time a session ends. So 
 written down first, in one document per repository, and the code is derived from it.
 Design is the new code.
 
-Two animals keep that honest.
+Two things keep that honest.
 
-**The elephant never forgets.** `design/DESIGN.md` is the repository's memory: what it is
+**The design is the repository's memory.** `design/DESIGN.md` holds what it is
 for, how it works, what must always hold, every decision in force with its reason and
 what was rejected, and which files realise it. It is current state. A machine, the
 checker, holds the code to it on every push.
 
-**The goldfish remembers nothing.** A session with no memory is handed the document, and
+**A cold read tests it.** A session with no memory is handed the document, and
 only the document, and asked to explain the repository and to build a change from it.
-What it cannot do, the document does not say. That is the test of whether the elephant
-remembered the right things: everyone who arrives later, person or agent, is a goldfish.
+What it cannot do, the document does not say. That is the test of whether the design
+holds the right things: everyone who arrives later, person or agent, starts with no
+memory too.
 
 ## What is where
 
@@ -29,7 +30,7 @@ README.md            what this is and why it exists
 CLAUDE.md            how an agent works here: the rules, and the project's own
 design/DESIGN.md     the design, with its spine
 design/changes/      one short note per change: problem, plan, alternatives, files
-harness/             the checker, goldfish, elephant, the push script, the hooks, this file
+harness/             the checker, the cold read, the reverse command, the push script, the hooks, this file
                      (in a repository nested under a root, the root's: ../harness)
 <code>               the project itself
 ```
@@ -117,7 +118,7 @@ code.
 
 That is all. It does not judge whether the design is good, whether a decision's reason
 holds, or whether a test proves what its name says. Those are read by a person at review,
-with the goldfish's help. A small check that is always right is trusted; a large one that
+with a cold read's help. A small check that is always right is trusted; a large one that
 is sometimes wrong is switched off.
 
 ## How a change lands
@@ -131,16 +132,16 @@ is sometimes wrong is switched off.
 4. **Make the design say what will be true**, then make the code agree with it. A new file
    goes under a glob in `files:`. A new rule gets an invariant and the test that proves
    it, named in `tests:`.
-5. **Ask the goldfish** when the change to the design is material:
-   `go -C harness run ./cmd/goldfish -change-file design/changes/<the note>.md -out goldfish.md`,
-   and paste `goldfish.md` into the pull request.
+5. **Ask for a cold read** when the change to the design is material:
+   `go -C harness run ./cmd/coldread -change-file design/changes/<the note>.md -out coldread.md`,
+   and paste `coldread.md` into the pull request.
 6. **Push through the one door**, `harness/safe-push`. It refuses `main`, runs the
    checker, pushes the branch and opens the pull request. Never type `git push`.
 7. **A person merges.** CI ran the checker again; `main` is protected behind it.
 
 The change ends with `design/DESIGN.md` saying what is now true.
 
-## The goldfish
+## The cold read
 
 Two questions, each put to its own fresh session with no tools, handed the prompt and
 `design/DESIGN.md` and nothing else:
@@ -158,32 +159,32 @@ the time the right response is to mend the document and ask again; sometimes the
 is wrong, and the person who merges says so. The verdicts go on the pull request for that
 person. A model's opinion never blocks a merge and never permits one.
 
-The prompts are `harness/goldfish/comprehension.md` and `readiness.md`; the model is
-in `harness/goldfish/goldfish.yaml`, and a session has no spending cap. It needs the `claude` command-line tool,
+The prompts are `harness/coldread/comprehension.md` and `readiness.md`; the model is
+in `harness/coldread/coldread.yaml`, and a session has no spending cap. It needs the `claude` command-line tool,
 signed in.
 
-## The elephant: a design for a repository that already has code
+## Reverse: a design for a repository that already has code
 
 A repository that existed before the method has a design; it is only not written down.
-`elephant` writes it down, in steps that are each less mechanical than the last:
+`cmd/reverse` writes it down, in steps that are each less mechanical than the last:
 
 | Step | What it does | What it decides |
 |---|---|---|
-| `elephant survey` | Lists what a machine can see: the files and the globs that account for them, languages, test files and names, the command the repository proves itself with, the documents that may record decisions, CI, whether the history follows a commit convention. | Nothing. |
-| `elephant skeleton` | Writes `design/DESIGN.md` with a spine that accounts for every file as it stands, so the checker passes at once, and a body whose every section is a question. | Nothing: `validate:` and `commits:` are written as comments. |
-| `elephant draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
-| a person | Reads every line. Answers each `(inferred)` and each `TODO(elephant)`. Switches on `validate:`. | Everything. |
+| `reverse survey` | Lists what a machine can see: the files and the globs that account for them, languages, test files and names, the command the repository proves itself with, the documents that may record decisions, CI, whether the history follows a commit convention. | Nothing. |
+| `reverse skeleton` | Writes `design/DESIGN.md` with a spine that accounts for every file as it stands, so the checker passes at once, and a body whose every section is a question. | Nothing: `validate:` and `commits:` are written as comments. |
+| `reverse draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
+| a person | Reads every line. Answers each `(inferred)` and each `TODO(design)`. Switches on `validate:`. | Everything. |
 
-`elephant prompt` prints what the drafting session is handed, to give to an agent of your
+`reverse prompt` prints what the drafting session is handed, to give to an agent of your
 own instead.
 
 The draft is told to write what the code proves. It can see what the code does; it usually
 cannot see why, or what else was considered. So a reason no file states ends
 `(inferred)`, a decision whose alternatives are recorded nowhere says
-`Not recorded. TODO(elephant)`, and it never invents one. The checker counts the
-`TODO(elephant)` marks on every run until none is left. Then ask the goldfish for
+`Not recorded. TODO(design)`, and it never invents one. The checker counts the
+`TODO(design)` marks on every run until none is left. Then ask a cold read for
 comprehension: if a session with no memory can explain the repository from the document,
-the elephant remembered enough.
+the design holds enough.
 
 Adopting the method is itself a change, so it has a note: bootstrap writes
 `design/changes/<date>-adopt-the-design.md`, and the rules for notes begin that day.
@@ -273,10 +274,10 @@ harness and sets all of the above up, then prints the entry to add to the root's
 ```
 go -C harness run ./cmd/check                    # the checks, then the repository's own gate
 go -C harness run ./cmd/check -validate=false    # the checks only
-go -C harness run ./cmd/goldfish -change "..."   # two fresh sessions read the design
-go -C harness run ./cmd/goldfish -only comprehension
-go -C harness run ./cmd/elephant survey          # what a machine can see
-go -C harness run ./cmd/elephant draft           # draft the design from the code
+go -C harness run ./cmd/coldread -change "..."   # two fresh sessions read the design
+go -C harness run ./cmd/coldread -only comprehension
+go -C harness run ./cmd/reverse survey          # what a machine can see
+go -C harness run ./cmd/reverse draft           # draft the design from the code
 go -C harness run ./cmd/subject "fix: ..."       # is this subject a Conventional Commit
 harness/safe-push                                # check, push, open the pull request
 harness/safe-push --no-pr                        # push only

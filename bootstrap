@@ -28,7 +28,7 @@
 # read with git status. When it is done the checker passes, and the next step
 # is the design itself:
 #
-#   cd /path/to/project && go -C harness run ./cmd/elephant draft
+#   cd /path/to/project && go -C harness run ./cmd/reverse draft
 set -eu
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -96,7 +96,7 @@ if [ -n "$ROOT" ]; then
   CLAUDE_TEMPLATE="CLAUDE.nested.md"
   did nested "under $PARENT: its harness, $HREL, and its rules"
 else
-  # The harness: the checker, goldfish, elephant, the push script, the hooks,
+  # The harness: the checker, the cold read, the reverse command, the push script, the hooks,
   # the templates and the method itself. A copy, so that the project depends
   # on nothing outside itself.
   H="$T/harness"
@@ -109,8 +109,20 @@ else
     if [ "$UPDATE" -eq 1 ]; then
       # The settings are the project's own: its model.
       KEEP="$(mktemp -d)"
-      for f in goldfish/goldfish.yaml elephant/elephant.yaml; do
+      for f in coldread/coldread.yaml reverse/reverse.yaml; do
         [ ! -f "$T/harness/$f" ] || { mkdir -p "$KEEP/$(dirname "$f")"; cp "$T/harness/$f" "$KEEP/$f"; }
+      done
+      # A harness from before the commands were named for what they do
+      # (ADR-0012) kept its settings under the old names; they are carried
+      # across, and the marks it left in the project's files are renamed.
+      mkdir -p "$KEEP/coldread" "$KEEP/reverse"
+      [ ! -f "$T/harness/goldfish/goldfish.yaml" ] || cp "$T/harness/goldfish/goldfish.yaml" "$KEEP/coldread/coldread.yaml"
+      [ ! -f "$T/harness/elephant/elephant.yaml" ] || cp "$T/harness/elephant/elephant.yaml" "$KEEP/reverse/reverse.yaml"
+      for f in CLAUDE.md design/DESIGN.md; do
+        [ ! -f "$T/$f" ] || ! grep -q 'elephant:\|TODO(elephant)' "$T/$f" || {
+          sed -e 's/elephant:project:/design:project:/g' -e 's/elephant:skeleton/design:skeleton/g' -e 's/TODO(elephant)/TODO(design)/g' "$T/$f" > "$KEEP/renamed" && cat "$KEEP/renamed" > "$T/$f" && rm "$KEEP/renamed"
+          did renamed "the marks in $f"
+        }
       done
       rm -rf "$T/harness"
       cp -R "$SRC/harness" "$T/harness"
@@ -187,7 +199,7 @@ if [ "$CI" -eq 1 ]; then
     if [ -n "$ROOT" ]; then
       # Where the root's map lists a contracts repository, the checker reads
       # there what this one must serve, so CI checks it out too.
-      WHERE="$(go -C "$H" run ./cmd/elephant where -root "$T" 2>/dev/null || true)"
+      WHERE="$(go -C "$H" run ./cmd/reverse where -root "$T" 2>/dev/null || true)"
       CPATH="$(printf '%s\n' "$WHERE" | sed -n 's/^contracts_path=//p')"
       CREPO="$(printf '%s\n' "$WHERE" | sed -n 's/^contracts_remote=//p' | sed -n -e 's#\.git$##' -e 's#^.*github\.com[:/]##p')"
       STEP="$(mktemp)"
@@ -215,7 +227,7 @@ mkdir -p "$T/design/changes"
 if [ -f "$T/design/DESIGN.md" ]; then
   did kept "design/DESIGN.md"
 else
-  go -C "$H" run ./cmd/elephant skeleton -root "$T" >/dev/null
+  go -C "$H" run ./cmd/reverse skeleton -root "$T" >/dev/null
   did wrote "design/DESIGN.md (a skeleton)"
   for n in "$T"/design/changes/*-adopt-the-design.md; do
     [ ! -f "$n" ] || did wrote "design/changes/$(basename "$n")"
@@ -269,13 +281,13 @@ Next, in $T:
 
   1. Draft the design from the code. One session reads the repository and
      writes nothing itself; what it could not find it marks (inferred) or
-     TODO(elephant):
+     TODO(design):
 
-         go -C $HREL run ./cmd/elephant draft
+         go -C $HREL run ./cmd/reverse draft
 
      Or hand the same instructions to an agent of your own:
 
-         go -C $HREL run ./cmd/elephant prompt
+         go -C $HREL run ./cmd/reverse prompt
 
   2. Read design/DESIGN.md, all of it, and answer every mark. This is the
      step that makes it the design. Switch on validate: in its frontmatter
@@ -284,7 +296,7 @@ Next, in $T:
   3. Ask a session with no memory whether it can explain the repository from
      the document alone, and mend what it could not:
 
-         go -C $HREL run ./cmd/goldfish -only comprehension
+         go -C $HREL run ./cmd/coldread -only comprehension
 
   4. Commit on a branch and push through the one door:
 

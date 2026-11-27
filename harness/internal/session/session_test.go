@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// A session's tools are always stated: a goldfish is started with none, by
+// A session's tools are always stated: a cold-read session is started with none, by
 // name, because leaving the flag out gives a session every tool; a surveying
 // session is started with the ones that read and no other.
 func TestASessionIsStartedWithExactlyTheToolsItIsGiven(t *testing.T) {

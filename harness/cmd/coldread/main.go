@@ -1,4 +1,4 @@
-// Command goldfish asks two sessions with no memory whether a design is
+// Command coldread asks two sessions with no memory whether a design is
 // ready, each handed design/DESIGN.md and one question. Comprehension: say
 // what the repository is for and how it works. Readiness: for the change at
 // hand, say whether the design is enough to implement it in one pass.
@@ -6,12 +6,12 @@
 // Run it by hand when a design changes materially; it is not a gate. Each
 // session is the claude command-line tool in print mode with no tools and no
 // persisted session, so that it has the design and nothing else. The model,
-// and the verdict line are in harness/goldfish/goldfish.yaml; the
+// and the verdict line are in harness/coldread/coldread.yaml; the
 // two prompts are beside it.
 //
-//	go -C harness run ./cmd/goldfish -change "what the pull request does"
-//	go -C harness run ./cmd/goldfish -change-file note.md -out goldfish.md
-//	go -C harness run ./cmd/goldfish -only comprehension
+//	go -C harness run ./cmd/coldread -change "what the pull request does"
+//	go -C harness run ./cmd/coldread -change-file note.md -out coldread.md
+//	go -C harness run ./cmd/coldread -only comprehension
 //
 // It prints each verdict with the session's reasons and writes them as
 // markdown to -out, to paste into the pull request. A verdict is advice for
@@ -97,7 +97,7 @@ func main() {
 		fatal(errors.New("the readiness test needs the change: -change \"...\" or -change-file <path>; or ask comprehension alone with -only comprehension"))
 	}
 
-	fmt.Printf("goldfish: %s: %d session(s) with no memory, model %s, reading %s\n", repo.Name, len(tests), s.Model, design.Rel(root, headPath))
+	fmt.Printf("coldread: %s: %d session(s) with no memory, model %s, reading %s\n", repo.Name, len(tests), s.Model, design.Rel(root, headPath))
 	verdicts := run(tests, string(head), change, s, session.Claude(*claudeFlag, os.TempDir()))
 	failed := false
 	for _, v := range verdicts {
@@ -116,14 +116,14 @@ func main() {
 	}
 	fmt.Println()
 	if failed {
-		fmt.Println("goldfish: a session with no memory could not explain or build from this design; the reasons are above. Read them before merging.")
+		fmt.Println("coldread: a session with no memory could not explain or build from this design; the reasons are above. Read them before merging.")
 		os.Exit(1)
 	}
-	fmt.Println("goldfish: ready. Every session passed.")
+	fmt.Println("coldread: ready. Every session passed.")
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "goldfish:", err)
+	fmt.Fprintln(os.Stderr, "coldread:", err)
 	os.Exit(2)
 }
 
@@ -138,7 +138,7 @@ func asksReadiness(tests []test) bool {
 
 // loadSettings reads the settings beside the prompts.
 func loadSettings(harness string) (session.Settings, error) {
-	p := filepath.Join(harness, "goldfish", "goldfish.yaml")
+	p := filepath.Join(harness, "coldread", "coldread.yaml")
 	s, err := session.Load(p)
 	if err != nil {
 		return s, err
@@ -156,7 +156,7 @@ func loadTests(harness, only string) ([]test, error) {
 		if only != "" && only != name {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(harness, "goldfish", name+".md"))
+		b, err := os.ReadFile(filepath.Join(harness, "coldread", name+".md"))
 		if err != nil {
 			return nil, err
 		}
@@ -248,7 +248,7 @@ func indent(s string) string {
 // markdown is what goes on the pull request: each verdict with its reasons.
 func markdown(repo string, verdicts []verdict) string {
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "## Goldfish: %s\n\n", repo)
+	fmt.Fprintf(b, "## Cold read: %s\n\n", repo)
 	b.WriteString("Sessions with no memory, each handed `design/DESIGN.md` and one question. Advice for whoever merges, not a gate.\n\n")
 	for _, v := range verdicts {
 		fmt.Fprintf(b, "<details>\n<summary><b>%s</b> · model %s</summary>\n\n%s\n\n</details>\n\n", headline(v), v.Model, reasons(v))
