@@ -921,6 +921,7 @@ command line; the owner found the two animals confused a reader who met them col
 | `harness/safe_push_test.go` | Runs the real `safe-push`, without a pull request, against a bare remote it throws away: one test for each thing the script must do or refuse. The test of ADR-0011 puts a stand-in for `gh` on the path and the remote at a path that reads as a GitHub address. The only Go file at the module's root. |
 | `harness/hooks/` | `pre-push`, `commit-msg`, and `install`. |
 | `.github/workflows/harness.yml` | This repository's CI: vet, the harness's tests, the checker. A copy of the template. |
+| `.github/ISSUE_TEMPLATE/problem.md` | What a person opening an issue is asked for: what happened, what was expected, where. |
 
 Paths a fault would travel, and the test that walks each:
 

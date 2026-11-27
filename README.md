@@ -250,6 +250,22 @@ everything else.
 - The headless sessions are Claude's command-line tool. The prompts are plain files
   beside the settings, and `reverse prompt` exists so that any agent can do the drafting.
 
+## Reporting a problem
+
+Issues are open to everyone, and welcome:
+[open one](https://github.com/carlgra/design-harness/issues/new/choose). A problem with
+the harness, a refusal that was wrong, a step in these documents that did not work or
+did not make sense, and an idea for the method are all worth one.
+
+It helps to say what you ran and what it printed, what you expected instead, and what
+kind of project it was: one repository or several, roughly how large, in what language.
+Leave out anything private; a description is enough.
+
+Pull requests are welcome too. This repository works by its own method, so a change
+starts with a short note under `design/changes/` and ends with `design/DESIGN.md` saying
+what is now true; `harness/FRAMEWORK.md` says how. For anything more than a small fix,
+an issue first saves you the work if the answer is no.
+
 ## Licence
 
 MIT. See `LICENSE`.
