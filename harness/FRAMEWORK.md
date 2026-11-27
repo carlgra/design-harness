@@ -28,7 +28,8 @@ memory too.
 ```
 README.md            what this is and why it exists
 CLAUDE.md            how an agent works here: the rules, and the project's own
-design/DESIGN.md     the design, with its spine
+design/DESIGN.md     the design, with its frontmatter
+design/spines/       in a large repository: one document per area of the code, its spine
 design/changes/      one short note per change: problem, plan, alternatives, files
 harness/             the checker, the cold read, the reverse command, the push script, the hooks, this file
                      (in a repository nested under a root, the root's: ../harness)
@@ -41,7 +42,7 @@ One file. Its sections, in order:
 
 | Section | What it holds |
 |---|---|
-| the spine | The frontmatter: the small part a machine reads. Below. |
+| the frontmatter | The small part a machine reads. Below. |
 | Scope | What the repository is for, what it holds, what it deliberately does not. |
 | How it works | The parts, what each does, how they fit together. |
 | Principles | The few rules of thumb every decision refers back to, each citing the decision that set it. |
@@ -49,7 +50,7 @@ One file. Its sections, in order:
 | What no machine proves yet | Each invariant held only by a person reading: how it is held today, what would prove it, what makes that due. |
 | How a change lands | The path from a note to `main`. |
 | Decisions | Every decision in force: what, why, and the alternatives rejected. |
-| Files | Every path the spine accounts for and what it is for; then each path a fault would travel and the test that walks it. |
+| Files | Every path the frontmatter accounts for and what it is for; then each path a fault would travel and the test that walks it. |
 
 How it is written:
 
@@ -74,10 +75,10 @@ How it is written:
   with a destination is a plan. A gap nobody wrote down is a surprise.
 - **Tests are named for the fault they catch.** The design says which paths a fault would
   travel and names the test that walks each, such as
-  `TestAnEmptyCartIsRefused`. The name is in the spine, and the checker refuses the push
+  `TestAnEmptyCartIsRefused`. The name is in the frontmatter, and the checker refuses the push
   if the test does not exist.
 
-## The spine
+## The frontmatter
 
 ```yaml
 ---
@@ -101,6 +102,64 @@ root need no entry, and nothing under `design/` does. What git ignores is not lo
 A repository asks more of its notes by adding a heading to `sections:`, for instance
 `What existing data changes meaning` where a change can alter what stored data means.
 
+## Spines: a large repository, one area at a time
+
+A design is read whole before a change. In a repository of a few thousand files that
+works. In one of millions of lines it does not: the document is either too thin to build
+from or too long to read, and an agent that reads the rules of every area to change one
+has filled its context with rules that do not bind it.
+
+Such a repository divides its code into **areas**, in the design's frontmatter, and gives
+each a **spine**: a document with the design's sections and the rules of that area alone.
+
+```yaml
+# design/DESIGN.md
+files:                          # what no area holds: the design's own
+  - package.json
+  - tools/**
+spines:                         # the areas, defined here and nowhere else
+  - name: checkout
+    files: [src/checkout/**, src/payments/**]
+  - name: catalogue
+    files: [src/catalogue/**]
+```
+
+```
+design/DESIGN.md              what binds every area, how the areas fit, and the list of them
+design/spines/checkout.md     the rules of checkout: its invariants, decisions, files, tests
+design/spines/catalogue.md    the rules of catalogue
+```
+
+- **The design says where the areas are; a spine says what holds inside one.** A spine's
+  frontmatter has one key, `tests:`, and its tests must be in its own area's files.
+- **A file is under one area at most.** One under none is the design's own and must be
+  under its `files:`. An area with no spine, and a spine with no area, are refused.
+- **You read the design and the spine of the area you are changing, and no other.**
+  `go -C harness run ./cmd/check -for src/checkout/cart.ts` prints which documents those
+  are. A change that crosses two areas reads both.
+- **Each document numbers its own ids.** Inside `checkout.md`, `ADR-0003` is its own. From
+  anywhere else it is `checkout/ADR-0003`. A spine cites the design as
+  `<repository>/ADR-0004`. Each is looked up, and refused if it is not there.
+- **A rule that binds more than one area belongs in the design**, and is cited from the
+  spines, not copied into them.
+- **A cold read is of one area:** `coldread -spine checkout` hands a session the design
+  and that spine. Without `-spine` it is handed the design alone.
+
+Adopt it area by area. Start with the design holding everything under `files:`; when an
+area's rules are worth writing down, add it under `spines:`, and
+
+```
+go -C harness run ./cmd/reverse skeleton -spine checkout   # the spine, every section a question
+go -C harness run ./cmd/reverse draft -spine checkout      # one session reads that area and drafts it
+go -C harness run ./cmd/coldread -spine checkout -only comprehension
+```
+
+The drafting session is handed the design and a survey of that area's files, and reads
+the area; it is not handed the other spines. `reverse draft` of the design itself, in a
+large repository, proposes the areas and writes each one's skeleton.
+
+A repository with no `spines:` is one document, and nothing above applies to it.
+
 ## What the machine checks, and what it does not
 
 `go -C harness run ./cmd/check` refuses, with a line saying what and where:
@@ -111,6 +170,9 @@ A repository asks more of its notes by adding a heading to `sections:`, for inst
 1. a source file under no glob in `files:`: nobody designed it;
 2. a name in `tests:` that is in no test file the design accounts for;
 3. a decision or invariant id defined twice, or cited and defined nowhere;
+   *(where the design defines areas)* an area with no spine or a spine with no area, a
+   file under two areas, a test a spine names that is not in its area, and a citation of
+   another document's id that the document does not define;
 4. a note, dated from `notes: from:`, that lacks one of its sections or leaves one empty.
 
 Then it runs `validate:`. There are always two fixes: amend the design, or change the
@@ -171,7 +233,7 @@ A repository that existed before the method has a design; it is only not written
 | Step | What it does | What it decides |
 |---|---|---|
 | `reverse survey` | Lists what a machine can see: the files and the globs that account for them, languages, test files and names, the command the repository proves itself with, the documents that may record decisions, CI, whether the history follows a commit convention. | Nothing. |
-| `reverse skeleton` | Writes `design/DESIGN.md` with a spine that accounts for every file as it stands, so the checker passes at once, and a body whose every section is a question. | Nothing: `validate:` and `commits:` are written as comments. |
+| `reverse skeleton` | Writes `design/DESIGN.md` with frontmatter that accounts for every file as it stands, so the checker passes at once, and a body whose every section is a question. | Nothing: `validate:` and `commits:` are written as comments. |
 | `reverse draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
 | a person | Reads every line. Answers each `(inferred)` and each `TODO(design)`. Switches on `validate:`. | Everything. |
 
@@ -208,7 +270,7 @@ project/               the root: its own repository
 ```
 
 - **The root holds what binds all of them**, and nothing else: the decisions that apply
-  everywhere, the harness, and the map. Its spine lists the nested repositories:
+  everywhere, the harness, and the map. Its frontmatter lists the nested repositories:
 
   ```yaml
   repos:
@@ -249,7 +311,7 @@ project/               the root: its own repository
   ````
 
   The contracts repository's checker refuses a new definition no note lists. Once the
-  definition has merged, the checker in `billing` refuses until its spine names a test
+  definition has merged, the checker in `billing` refuses until its frontmatter names a test
   for it:
 
   ```yaml
@@ -261,7 +323,7 @@ project/               the root: its own repository
   Only what is merged binds, so the definition and its server can be built in either
   order: the server's test first, then the definition; or the definition as a draft
   pull request until the server is ready. Definitions are read from `.proto` files.
-- **What the root's spine asks of every repository is written into each.** A nested
+- **What the root's frontmatter asks of every repository is written into each.** A nested
   repository's `commits:` and `notes:` are its own lines, taken from the root's when it
   adopted the method. Nothing is inherited at check time, so a design always says what
   binds its repository.

@@ -23,15 +23,15 @@ type project struct {
 	extra []string
 }
 
-func newProject(t *testing.T, spine string) *project {
+func newProject(t *testing.T, frontmatter string) *project {
 	t.Helper()
-	return newProjectAt(t, spine, "remote.git")
+	return newProjectAt(t, frontmatter, "remote.git")
 }
 
 // newProjectAt is newProject with the remote at a path of the caller's
 // choosing under the temporary directory: one that reads as a GitHub address
 // is how a test stands in for a repository there.
-func newProjectAt(t *testing.T, spine, remote string) *project {
+func newProjectAt(t *testing.T, frontmatter, remote string) *project {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not installed")
@@ -47,7 +47,7 @@ func newProjectAt(t *testing.T, spine, remote string) *project {
 	}
 	seed := filepath.Join(tmp, "seed")
 	p.dir = seed
-	p.write("design/DESIGN.md", "---\nfiles:\n  - app/**\n"+spine+"---\n\n# work\n\n## Scope\n\nA thing to push.\n")
+	p.write("design/DESIGN.md", "---\nfiles:\n  - app/**\n"+frontmatter+"---\n\n# work\n\n## Scope\n\nA thing to push.\n")
 	p.write("app/main.txt", "one\ntwo\nthree\n")
 	p.write("README.md", "# work\n")
 	p.git("init", "-q", "-b", "main")

@@ -266,7 +266,7 @@ func checkContracts(repo *design.Repo, env *Env, res *Result) {
 	}
 }
 
-// checkListed is the contracts half. Its notes, from the date its spine
+// checkListed is the contracts half. Its notes, from the date its frontmatter
 // holds notes to, carry a servers block; every entry names a server and
 // callers on the root's map; and every RPC or request field the branch adds
 // over what is merged is listed in some note.

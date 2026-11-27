@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"harness/internal/design"
 	"strings"
 
 	"harness/internal/session"
@@ -102,7 +103,7 @@ func TestOneFailureFailsTheRunAndIsReportedWithItsReasons(t *testing.T) {
 	if failed != 1 {
 		t.Fatalf("expected exactly one failure, got %d", failed)
 	}
-	md := markdown("x", vs)
+	md := markdown("x", []string{"design/DESIGN.md"}, vs)
 	for _, want := range []string{"readiness: FAIL", "pinned in ADR-0014", "comprehension: PASS", "model m"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("the markdown for the pull request does not say %q:\n%s", want, md)
@@ -128,5 +129,34 @@ func TestASessionThatCannotRunIsAFailure(t *testing.T) {
 	}
 	if !strings.Contains(headline(vs[0]), "not found") {
 		t.Fatalf("the reason is not reported: %s", headline(vs[0]))
+	}
+}
+
+// Asked about one area, a session is handed the design and that area's
+// spine, and no other area's; an area the design does not define is an
+// error, not a read of the design alone.
+func TestAnAreaIsReadWithTheDesignAndWithoutTheOtherAreas(t *testing.T) {
+	repo := &design.Repo{Spines: []design.Spine{
+		{Name: "cart", Path: "design/spines/cart.md", Doc: "---\ntests: []\n---\n# cart\n\nCART RULES\n"},
+		{Name: "checkout", Path: "design/spines/checkout.md", Doc: "CHECKOUT RULES"},
+	}}
+	head, reading, err := handed(repo, "# shop\n\nTHE DESIGN\n", "cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(head, "THE DESIGN") || !strings.Contains(head, "CART RULES") || strings.Contains(head, "CHECKOUT RULES") {
+		t.Fatalf("handed the wrong documents:\n%s", head)
+	}
+	if strings.Index(head, "THE DESIGN") > strings.Index(head, "CART RULES") {
+		t.Fatal("the design is read before the spine")
+	}
+	if len(reading) != 2 || reading[1] != "design/spines/cart.md" {
+		t.Fatalf("reading %v", reading)
+	}
+	if _, _, err := handed(repo, "x", "returns"); err == nil {
+		t.Fatal("an area the design does not define was read")
+	}
+	if head, reading, _ := handed(repo, "x", ""); head != "x" || len(reading) != 1 {
+		t.Fatal("with no area named, the design alone is handed over")
 	}
 }

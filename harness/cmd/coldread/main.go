@@ -12,6 +12,7 @@
 //	go -C harness run ./cmd/coldread -change "what the pull request does"
 //	go -C harness run ./cmd/coldread -change-file note.md -out coldread.md
 //	go -C harness run ./cmd/coldread -only comprehension
+//	go -C harness run ./cmd/coldread -spine checkout -change "..."   # one area: the design and its spine
 //
 // It prints each verdict with the session's reasons and writes them as
 // markdown to -out, to paste into the pull request. A verdict is advice for
@@ -54,6 +55,7 @@ func main() {
 	outFlag := flag.String("out", "", "write the verdicts as markdown to this path, for the pull request")
 	claudeFlag := flag.String("claude", "claude", "the claude command-line tool")
 	onlyFlag := flag.String("only", "", "run one test only: comprehension or readiness")
+	spineFlag := flag.String("spine", "", "ask about one area: the session is handed the design and that area's spine")
 	flag.Parse()
 	design.ForgetGitEnv()
 
@@ -69,8 +71,11 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	headPath := filepath.Join(root, filepath.FromSlash(design.DocPath))
-	head, err := os.ReadFile(headPath)
+	main, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(design.DocPath)))
+	if err != nil {
+		fatal(err)
+	}
+	head, reading, err := handed(repo, string(main), *spineFlag)
 	if err != nil {
 		fatal(err)
 	}
@@ -97,8 +102,8 @@ func main() {
 		fatal(errors.New("the readiness test needs the change: -change \"...\" or -change-file <path>; or ask comprehension alone with -only comprehension"))
 	}
 
-	fmt.Printf("coldread: %s: %d session(s) with no memory, model %s, reading %s\n", repo.Name, len(tests), s.Model, design.Rel(root, headPath))
-	verdicts := run(tests, string(head), change, s, session.Claude(*claudeFlag, os.TempDir()))
+	fmt.Printf("coldread: %s: %d session(s) with no memory, model %s, reading %s\n", repo.Name, len(tests), s.Model, strings.Join(reading, " and "))
+	verdicts := run(tests, head, change, s, session.Claude(*claudeFlag, os.TempDir()))
 	failed := false
 	for _, v := range verdicts {
 		fmt.Println()
@@ -110,7 +115,7 @@ func main() {
 	}
 	if *outFlag != "" {
 		p, _ := design.Abs(*outFlag)
-		if err := os.WriteFile(p, []byte(markdown(repo.Name, verdicts)), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte(markdown(repo.Name, reading, verdicts)), 0o644); err != nil {
 			fatal(err)
 		}
 	}
@@ -166,6 +171,29 @@ func loadTests(harness, only string) ([]test, error) {
 		return nil, fmt.Errorf("-only %q is not one of %s", only, strings.Join(testNames, ", "))
 	}
 	return tests, nil
+}
+
+// handed is the document a session is given, and the files it is made of:
+// the design alone, or, for one area, the design and then that area's spine.
+// No other spine is ever handed over: an area's rules are read with the
+// design and without the other areas', by a session as by a person.
+func handed(repo *design.Repo, main, spine string) (string, []string, error) {
+	if spine == "" {
+		return main, []string{design.DocPath}, nil
+	}
+	sp := repo.Spine(spine)
+	if sp == nil {
+		return "", nil, fmt.Errorf("the design defines no area called %s (%s spines:)", spine, design.DocPath)
+	}
+	if sp.Err != nil {
+		return "", nil, fmt.Errorf("%s: %v", sp.Path, sp.Err)
+	}
+	b := &strings.Builder{}
+	b.WriteString(strings.TrimSpace(main))
+	fmt.Fprintf(b, "\n\n---\n\nThe document above is the design of the whole repository. Below is the spine of one area of it, `%s`, at `%s`: the rules of that area alone, under the files the design gives it. What is asked about the repository is asked about this area, within the repository.\n\n", sp.Name, sp.Path)
+	b.WriteString(strings.TrimSpace(sp.Doc))
+	b.WriteString("\n")
+	return b.String(), []string{design.DocPath, sp.Path}, nil
 }
 
 // compose is the whole of what a session is given: its prompt, the design,
@@ -246,10 +274,10 @@ func indent(s string) string {
 }
 
 // markdown is what goes on the pull request: each verdict with its reasons.
-func markdown(repo string, verdicts []verdict) string {
+func markdown(repo string, reading []string, verdicts []verdict) string {
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "## Cold read: %s\n\n", repo)
-	b.WriteString("Sessions with no memory, each handed `design/DESIGN.md` and one question. Advice for whoever merges, not a gate.\n\n")
+	fmt.Fprintf(b, "Sessions with no memory, each handed `%s` and one question. Advice for whoever merges, not a gate.\n\n", strings.Join(reading, "` and `"))
 	for _, v := range verdicts {
 		fmt.Fprintf(b, "<details>\n<summary><b>%s</b> · model %s</summary>\n\n%s\n\n</details>\n\n", headline(v), v.Model, reasons(v))
 	}

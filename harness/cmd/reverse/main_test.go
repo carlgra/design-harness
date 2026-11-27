@@ -92,11 +92,11 @@ func TestTheSurveySaysWhatIsThereAndDecidesNothing(t *testing.T) {
 	}
 }
 
-// A skeleton's spine accounts for every file as it stands, so that the
+// A skeleton's frontmatter accounts for every file as it stands, so that the
 // checker passes the moment a repository adopts the method; and it switches
 // nothing on: the gate is a comment, and so is the convention unless the
 // history already follows it.
-func TestASkeletonsSpineAccountsForEveryFileAndSwitchesNothingOn(t *testing.T) {
+func TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn(t *testing.T) {
 	repo := repoWith(t, existing)
 	read := func(subjects []string) design.Design {
 		t.Helper()
@@ -107,7 +107,7 @@ func TestASkeletonsSpineAccountsForEveryFileAndSwitchesNothingOn(t *testing.T) {
 		}
 		var d design.Design
 		if err := yaml.Unmarshal([]byte(fm.YAML), &d); err != nil {
-			t.Fatalf("the spine does not parse: %v\n%s", err, fm.YAML)
+			t.Fatalf("the frontmatter does not parse: %v\n%s", err, fm.YAML)
 		}
 		if !strings.Contains(fm.Body, "# "+repo.Name) || !strings.Contains(fm.Body, SkeletonMark) {
 			t.Fatalf("the body is not the skeleton's:\n%s", fm.Body)
@@ -117,7 +117,7 @@ func TestASkeletonsSpineAccountsForEveryFileAndSwitchesNothingOn(t *testing.T) {
 	d := read([]string{"wip", "more"})
 	for _, f := range repo.Files {
 		if !design.Exempt[f] && !design.Claimed(d.Files, f) {
-			t.Errorf("%s is not accounted for by the skeleton's spine: %v", f, d.Files)
+			t.Errorf("%s is not accounted for by the skeleton's frontmatter: %v", f, d.Files)
 		}
 	}
 	if d.Validate != "" || d.Commits != "" || len(d.Tests) != 0 {
@@ -164,7 +164,7 @@ func TestADraftIsReadAsTheDesignAndTheRules(t *testing.T) {
 
 	for name, bad := range map[string]string{
 		"no header":      "---\nfiles: [a/**]\n---\n\n# x\n",
-		"no frontmatter": DesignHeader + "\n# x\n\nNo spine.\n",
+		"no frontmatter": DesignHeader + "\n# x\n\nNo frontmatter.\n",
 		"no files":       DesignHeader + "\n---\ntests: []\n---\n\n# x\n",
 		"no body":        DesignHeader + "\n---\nfiles: [a/**]\n---\n",
 		"not yaml":       DesignHeader + "\n---\nfiles: [a/**\n---\n\n# x\n",
@@ -240,7 +240,7 @@ func TestADraftingSessionIsHandedTheInstructionsTheSurveyAndTheShape(t *testing.
 }
 
 // A repository nested under a root takes the root's rules into its own
-// spine, where they can be read: the commit convention and the sections the
+// frontmatter, where they can be read: the commit convention and the sections the
 // root asks of a note. Its scope says where it sits and how the root is
 // cited, the survey names the siblings the root lists, and a drafting session
 // is handed the root's design. A repository that stands alone gets none of it.
@@ -267,10 +267,10 @@ func TestANestedRepositoryTakesItsRulesFromTheRoot(t *testing.T) {
 	}
 	var d design.Design
 	if err := yaml.Unmarshal([]byte(fm.YAML), &d); err != nil {
-		t.Fatalf("the spine does not parse: %v\n%s", err, fm.YAML)
+		t.Fatalf("the frontmatter does not parse: %v\n%s", err, fm.YAML)
 	}
 	if d.Commits != "conventional" || len(d.Notes.Sections) != 5 || d.Notes.Sections[4] != "What existing data changes meaning" {
-		t.Errorf("the root's rules were not taken into the spine: %+v", d)
+		t.Errorf("the root's rules were not taken into the frontmatter: %+v", d)
 	}
 	if len(d.Repos) != 0 {
 		t.Errorf("a nested repository was given a map: %+v", d.Repos)
@@ -335,7 +335,7 @@ func TestARootsSkeletonCarriesTheMap(t *testing.T) {
 	}
 	var d design.Design
 	if err := yaml.Unmarshal([]byte(fm.YAML), &d); err != nil {
-		t.Fatalf("the spine does not parse: %v\n%s", err, fm.YAML)
+		t.Fatalf("the frontmatter does not parse: %v\n%s", err, fm.YAML)
 	}
 	if len(d.Repos) != 2 || d.Repos[0].Path != "billing" || d.Repos[0].Kind != "service" || d.Repos[0].Remote != "git@host:x/billing.git" || d.Repos[1].Kind != "contracts" || d.Repos[1].Remote != "" {
 		t.Errorf("the map was written as %+v", d.Repos)

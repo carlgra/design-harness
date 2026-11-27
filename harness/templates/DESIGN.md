@@ -1,5 +1,5 @@
 ---
-# The spine: the part of the design a machine reads. Everything under the
+# The frontmatter: the part of the design a machine reads. Everything under the
 # second line of dashes is read by people, and by sessions with no memory.
 #
 # The code this design accounts for. Every source file must be under one of
@@ -21,6 +21,13 @@ tests: []
 notes:
   from: {{DATE}}
   sections: {{SECTIONS}}
+# The areas this design divides the code into, where one document would be
+# too much to read before a change. Each has a spine, design/spines/<name>.md,
+# holding that area's rules alone; this document then holds only what binds
+# them all. A file is under one area at most.
+# spines:
+#   - name: checkout
+#     files: [src/checkout/**]
 {{REPOS}}
 ---
 

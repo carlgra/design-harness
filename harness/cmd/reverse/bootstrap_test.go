@@ -164,7 +164,7 @@ func run(t *testing.T, name string, args ...string) string {
 }
 
 // A repository under a root is given no harness of its own: it uses the
-// root's by relative path, its rules say to read the root's, its spine takes
+// root's by relative path, its rules say to read the root's, its frontmatter takes
 // the root's commit convention, its CI checks the root out around it, and it
 // passes the checker run from the root's harness. The root, with the
 // repository now inside it, still passes its own.

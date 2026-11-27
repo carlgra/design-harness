@@ -6,9 +6,15 @@
 // It works in steps, each less mechanical than the last:
 //
 //	go -C harness run ./cmd/reverse survey     # what a machine can say: files, tests, gate, documents, commits
-//	go -C harness run ./cmd/reverse skeleton   # write design/DESIGN.md with a spine that accounts for every file, and questions
+//	go -C harness run ./cmd/reverse skeleton   # write design/DESIGN.md with frontmatter that accounts for every file, and questions
 //	go -C harness run ./cmd/reverse prompt     # print what a drafting session is handed, to give to an agent of your own
 //	go -C harness run ./cmd/reverse draft      # one session reads the repository and drafts the design and the project's rules
+//
+// In a repository too large for one document, the design divides the code
+// into areas under spines: and each area has a spine of its own:
+//
+//	go -C harness run ./cmd/reverse skeleton -spine checkout   # write design/spines/checkout.md, every section a question
+//	go -C harness run ./cmd/reverse draft -spine checkout      # one session reads that area and drafts its spine
 //
 // The survey decides nothing. The draft is a session that can read the
 // repository and write nothing: this command writes what it replies, to
@@ -57,6 +63,7 @@ func main() {
 	rootFlag := fs.String("root", "", "the project (default: the git repository the command was typed in)")
 	forceFlag := fs.Bool("force", false, "replace a design/DESIGN.md that is no longer a skeleton")
 	claudeFlag := fs.String("claude", "claude", "the claude command-line tool")
+	spineFlag := fs.String("spine", "", "with skeleton, prompt or draft: the spine of this one area, as design/DESIGN.md defines it, and not the whole design")
 	fs.Parse(os.Args[2:])
 	design.ForgetGitEnv()
 
@@ -76,7 +83,23 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	s := survey(repo, parent, recentSubjects(root, 200), time.Now().Format("2006-01-02"))
+	today := time.Now().Format("2006-01-02")
+	if *spineFlag != "" {
+		var ask session.Runner
+		model := ""
+		if step == "draft" {
+			set, err := session.Load(filepath.Join(harness, "reverse", "reverse.yaml"))
+			if err != nil {
+				fatal(err)
+			}
+			ask, model = session.Claude(*claudeFlag, root, "Read", "Grep", "Glob"), set.Model
+		}
+		if err := spineStep(step, root, harness, *spineFlag, *forceFlag, repo, today, ask, model); err != nil {
+			fatal(err)
+		}
+		return
+	}
+	s := survey(repo, parent, recentSubjects(root, 200), today)
 	template, err := os.ReadFile(filepath.Join(harness, "templates", "DESIGN.md"))
 	if err != nil {
 		fatal(err)
@@ -94,7 +117,7 @@ func main() {
 		if err := write(docPath, s.Skeleton(string(template))); err != nil {
 			fatal(err)
 		}
-		fmt.Printf("reverse: wrote %s: a spine that accounts for all %d files, and every section still a question\n", design.DocPath, s.Files)
+		fmt.Printf("reverse: wrote %s: frontmatter that accounts for all %d files, and every section still a question\n", design.DocPath, s.Files)
 		// Adopting the method is itself a change, so it has a note: the
 		// first, unless the repository already keeps notes.
 		changes := filepath.Join(root, "design", "changes")
@@ -159,6 +182,16 @@ func main() {
 			fatal(err)
 		}
 		fmt.Printf("reverse: wrote %s\n", design.DocPath)
+		// A draft may divide the code into areas. Each gets the skeleton of
+		// its spine at once, so that the checker reads what was drafted and
+		// each area has its questions waiting.
+		wrote, err := skeletonsForAreas(root, harness, repo, today)
+		if err != nil {
+			fatal(err)
+		}
+		for _, name := range wrote {
+			fmt.Printf("reverse: wrote %s, a skeleton: draft it with  go -C %s run ./cmd/reverse draft -spine %s\n", design.SpinePath(name), s.HarnessPath(), name)
+		}
 		if rules != "" {
 			claude := filepath.Join(root, "CLAUDE.md")
 			old, _ := os.ReadFile(claude)
@@ -179,7 +212,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: reverse survey|skeleton|prompt|draft|where [-root DIR] [-force] [-claude BIN]")
+	fmt.Fprintln(os.Stderr, "usage: reverse survey|skeleton|prompt|draft|where [-root DIR] [-spine AREA] [-force] [-claude BIN]")
 	os.Exit(2)
 }
 
@@ -199,6 +232,10 @@ func write(p, content string) error {
 // exists and is no longer a skeleton. The design is the one thing that must
 // not be forgotten, and a draft is a guess.
 func replaceable(docPath string, force bool) error {
+	return replaceableAt(docPath, design.DocPath, force)
+}
+
+func replaceableAt(docPath, name string, force bool) error {
 	b, err := os.ReadFile(docPath)
 	if os.IsNotExist(err) || force {
 		return nil
@@ -207,7 +244,7 @@ func replaceable(docPath string, force bool) error {
 		return err
 	}
 	if !strings.Contains(string(b), SkeletonMark) {
-		return fmt.Errorf("%s is no longer a skeleton, so a draft would replace a design someone wrote; -force replaces it", design.DocPath)
+		return fmt.Errorf("%s is no longer a skeleton, so a draft would replace a design someone wrote; -force replaces it", name)
 	}
 	return nil
 }
@@ -224,7 +261,7 @@ func prompt(harness, root string, s Survey, template string) (string, error) {
 	b.WriteString(strings.TrimRight(string(instructions), "\n"))
 	b.WriteString("\n\n---\n\n")
 	b.WriteString(strings.TrimSpace(s.Markdown()))
-	b.WriteString("\n\n---\n\nThe shape to fill, with the spine as the survey gives it:\n\n````markdown\n")
+	b.WriteString("\n\n---\n\nThe shape to fill, with the frontmatter as the survey gives it:\n\n````markdown\n")
 	b.WriteString(strings.TrimSpace(strings.ReplaceAll(s.Skeleton(template), SkeletonMark+"\n\n", "")))
 	b.WriteString("\n````\n")
 	if p := s.Parent; p != nil {
@@ -262,7 +299,7 @@ func split(reply string) (doc, rules string, err error) {
 		return "", "", errors.New("the design in the reply accounts for no files: its frontmatter has no files:")
 	}
 	if strings.TrimSpace(fm.Body) == "" {
-		return "", "", errors.New("the design in the reply is a spine with no document under it")
+		return "", "", errors.New("the design in the reply is frontmatter with no document under it")
 	}
 	return doc, rules, nil
 }
