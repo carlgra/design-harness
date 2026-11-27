@@ -60,7 +60,28 @@ they govern into this document, as decisions and invariants in its format, each 
 reason where the document gives one. Do not point at them as rules that stay in force
 elsewhere, and do not copy their descriptions of the code. The aim is one place where a
 rule is written. Where you bring a rule in, name the document it came from in the
-sentence, so that a person can retire the old copy.
+sentence, so that a person can retire the old copy. Bring a rule in whole or leave it
+out: never send the reader to the old document for the rest of it, since the old
+document is to be retired. Where it holds a register a rule depends on, a table of names
+in force for instance, bring the register in. If an existing document already numbers its
+decisions or invariants, keep every id exactly as it is written, so that the comments and
+citations that use them still land.
+
+Where the repository's existing documents already number its decisions or invariants,
+those numbers are in its code's comments and in people's heads, and they are bare. So
+give a rule that is new here a number above the highest any existing document uses, in
+this document and in every spine alike, so that a bare number still means one thing.
+The checker reads every id written in this document as a citation, and refuses one the
+document does not define. So never write an id this document does not define, not even
+to speak of it, to say where a rule came from, or to say that code comments use it. Name
+the document a rule came from by its path alone. Another document's rule that is in
+force is cited by that document's name, as the shape shows.
+If the numbering needs a sentence, write it with no id in it, not even as the end of a
+range: "the ids here are those `docs/architecture.md` gave them; a gap is a rule kept in
+an area's spine, and new ones follow the highest".
+
+The document is current state. Say nothing in it about how or when it was drafted, what
+it was drafted from, when a decision was made or amended, or what is still to be written.
 
 ## A repository that is one of several
 
@@ -106,12 +127,30 @@ spines:
     files: [src/checkout/**]  # the globs the area holds
 ```
 
-An area is a part with rules of its own that someone could change without reading the
-rest: a bounded part of the product, a layer, a package. Draw them where the code already
-draws them, by directory. No file may fall under two areas. A file under no area must
+An area is a part a change can stay inside: a bounded part of the product with rules of
+its own, which someone could change without reading the rest. A layer that every feature
+passes through is not an area, and neither is the tests' tree: a change to one feature
+touches both. An area's `files:` may take globs from several trees, and it holds its own
+tests wherever they are kept, so where tests live apart from the code, give each area the
+part of the tests' tree that is its own. The commit subjects in the survey show which
+paths change together; prefer a division most changes would stay inside. No file may fall
+under two areas. A file under no area must
 still fall under a glob in `files:`, and is then this document's own to describe. Add a
 section `The areas` after `How it works`, with one row per area: its name, its files and
 what it is for. Under `Files`, give each area one row and leave the detail to its spine.
+
+A decision or an invariant that binds one area only is not this document's: leave it out
+entirely, however clearly you saw it, and the session that drafts that area's spine will
+find it. Where a decision binds several areas, keep here the part that binds them, what
+each must do or may rely on, and leave how one area carries it out, its files, its
+defaults, its tables, to that area's spine. Where an existing document numbers a rule
+that is one area's alone, leave both the rule and its id out of this document: the
+session that drafts that area's spine reads the same document and keeps the id there.
+
+As a guide, the design of a repository divided into areas is a few hundred lines. If
+yours is much longer, more of it is one area's and belongs in a spine. This document is then short, and that is the point of dividing. Say nothing here
+about whether a spine has been written or is still to be: the document is current state,
+and that sentence is false the day the spine exists.
 
 A repository small enough for one document has no `spines:` and no such section.
 
@@ -145,9 +184,11 @@ schema, assertions, authorisation checks, error paths, a test named for a rule, 
 that says must, never or always, a CI step that fails the build. Each is one list item:
 `- **INV-001** — the rule, as a sentence that is true. *(what proves it)*`. Number them in
 order. What proves it is one of: `test: TheTestName` for a test that exists and that you
-have read, which also goes in the frontmatter's `tests:`; `the checker` for INV-001 as given;
+have read, which also goes in the frontmatter's `tests:`; `the checker` for the method's own rule as given;
 the name of the mechanism, such as a database constraint or a CI step, with its file; or
-`read at review` when nothing does. Keep INV-001 as the shape has it.
+`read at review` when nothing does. Keep the shape's one invariant, design before code:
+as INV-001, or, where the repository's own records already use that id, under the next id
+none of them uses. Never renumber an invariant the repository already has.
 
 **What no machine proves yet.** One row for every invariant whose proof is
 `read at review`: how it is held today, the test or check that would prove it, and what
@@ -157,15 +198,16 @@ the table out.
 **How a change lands.** Keep as given.
 
 **Decisions.** One `### ADR-NNNN — title` for each choice the repository embodies that
-has to be governed, by the test above, numbered from ADR-0001 in the order a reader needs them: the language and
+has to be governed, by the test above, numbered from ADR-0001, or above the repository's existing numbers where it has them, in the order a reader needs them: the language and
 framework, how it is structured into parts, where data lives and in what store, how it
 talks to anything outside itself, how it is built, deployed and configured, how it
 authenticates, what it deliberately leaves out. The title is the decision as a sentence
 that is true. Under it: what was decided and why, stated as a constraint and not a value,
 naming the file a value lives in rather than repeating it. Then
 `#### Alternatives rejected`. If the repository already has decision records, bring in
-every one still in force, keep its id if it has one of the form ADR-NNNN so that existing
-citations still land, and leave out the ones that were superseded: this document is
+every one still in force that has to be governed, keep its id exactly as it is written,
+the number of digits included, so that existing citations still land, number new ones in
+the same width, and leave out the ones that were superseded: this document is
 current state. Cite decisions and invariants only by ids you define.
 
 **Files.** A table: every path under `files:`, at the grain a reader needs, and what it is

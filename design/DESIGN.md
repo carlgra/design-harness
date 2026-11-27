@@ -66,6 +66,7 @@ tests:
   - TestASpineIsDraftedFromItsAreaAndTheDesignAlone
   - TestADraftedSpineReplacesOnlyASkeleton
   - TestEveryAreaADraftDefinesIsGivenASkeleton
+  - TestTheMarksLeftForAPersonAreCountedOneWay
 # The repository's own gate, run from the root after the checks pass.
 validate: go -C harness vet ./... && go -C harness test ./...
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
@@ -1120,3 +1121,4 @@ Paths a fault would travel, and the test that walks each:
 - a session drafting a spine is handed nothing of another area — `TestASpineIsDraftedFromItsAreaAndTheDesignAlone`
 - a drafted spine does not replace one a person took on, and a reply that is no spine is kept — `TestADraftedSpineReplacesOnlyASkeleton`
 - every area a drafted design defines has a spine at once, and one that was there is kept — `TestEveryAreaADraftDefinesIsGivenASkeleton`
+- the checker and the drafting command give one number for the marks left in a document — `TestTheMarksLeftForAPersonAreCountedOneWay`

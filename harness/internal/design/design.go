@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -501,6 +502,25 @@ func IsWorktree(dir string) bool {
 func IsDir(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()
+}
+
+// --- marks left for a person ---
+
+// Unfinished is the mark a skeleton and a draft leave where a person has
+// still to write or confirm something.
+const Unfinished = "TODO(design)"
+
+var inlineCode = regexp.MustCompile("`[^`\\n]*`")
+
+// Marks counts the marks left for a person in a document: in its body, not
+// its frontmatter, and not a mark written as code, between backticks, which
+// is the mark being spoken of and not one left. Every command counts with
+// this, so that two of them never give two numbers for one document.
+func Marks(doc string) int {
+	if fm, err := ParseFrontmatter(doc); err == nil {
+		doc = fm.Body
+	}
+	return strings.Count(inlineCode.ReplaceAllString(doc, ""), Unfinished)
 }
 
 // --- frontmatter ---

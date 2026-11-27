@@ -34,7 +34,9 @@ type Survey struct {
 	Gates []Gate
 	// Docs are files that may already say what was decided, and why.
 	Docs []string
-	CI   []string
+	// Elsewhere, in the survey of one area, are such files outside it.
+	Elsewhere []string
+	CI        []string
 	// Subjects are the most recent commit subjects; Conventional is how many
 	// of them are Conventional Commits.
 	Subjects     []string

@@ -29,8 +29,34 @@ Record it as ADR-0014 and say it wherever a reader or a session first meets the 
 - `design/DESIGN.md`: the scope, a principle, ADR-0014, and a row under *What no machine
   proves yet*, since nothing yet holds a design to it.
 
-No code changes. What enforces the purpose, a check per rule, a warning period, a size
-for a document, is #28 to #35 and is designed after this.
+The prompts were then run for real, five rounds, on a repository of about 590 files in
+four parts whose earlier design, some 3,500 lines, stood in as an existing architecture
+document. Each round showed a fault only a live session shows, and each is mended here:
+
+- The spine template's example citation was read as a real one, so a fresh skeleton was
+  refused. It is written so that it is not.
+- A draft renumbered the repository's existing invariants to make room for the
+  method's own. Existing ids are kept exactly; the method's rule takes the next free
+  one, and new rules anywhere are numbered above the highest existing number, so that
+  a bare number in a code comment still means one thing (#41).
+- Rules of one area stayed in the design (#38). The design's draft leaves a one-area
+  rule out, keeps of a wider decision only what binds several areas, and is given a
+  size to aim at.
+- A session drafting a spine was never shown a document outside its area, so an area's
+  existing rules were lost. The survey of an area lists such documents.
+- Documents wrote ids they did not define, to say where a rule came from or to explain
+  their numbering, and the checker refused them. The prompts say why not to, and how to
+  say it without one.
+- An area is described as a part a change can stay inside, never a layer or the tests'
+  tree, holding its own tests wherever they are kept (#36, #39); a design says nothing
+  of whether a spine is written (#40) or of how it was drafted.
+- A cold read of one area counted the other spines' absence as a gap. It is told they
+  are withheld on purpose.
+- The checker and `reverse draft` counted the marks left for a person differently (#46).
+  Both now count with `design.Marks`.
+
+What enforces the purpose, a check per rule, a warning period, a size for a document,
+is #28 to #35 and is designed after this.
 
 ## Alternatives rejected
 
@@ -49,4 +75,10 @@ for a document, is #28 to #35 and is designed after this.
 - `harness/templates/DESIGN.md`, `spine.md`, `CLAUDE.md`, `CLAUDE.nested.md`: a sentence
   each.
 - `harness/coldread/readiness.md`: what is and is not a gap.
-- `design/DESIGN.md`: scope, principle, ADR-0014, the gap.
+- `design/DESIGN.md`: scope, principle, ADR-0014, the gap, and the new test.
+- `harness/internal/design/design.go`, `design_test.go`: `Marks`, the one count.
+- `harness/cmd/check/checks.go`, `harness/cmd/reverse/main.go`, `spine.go`: use it; the
+  survey of an area lists documents elsewhere; `survey.go` carries the list.
+- `harness/cmd/coldread/main.go`: what a session reading one area is told.
+- `harness/cmd/reverse/spine_test.go`: the template's example, and the documents
+  elsewhere.

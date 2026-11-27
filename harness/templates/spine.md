@@ -23,7 +23,7 @@ The files it holds, as `design/DESIGN.md` gives them:
 {{FILES}}
 
 Ids here are this spine's own. From anywhere else an id of this spine is cited as
-`{{AREA}}/ADR-0001`; here the design's are cited as `{{REPO}}/ADR-0001`, and another
+`{{AREA}}/ADR-NNNN`; here the design's are cited as `{{REPO}}/ADR-NNNN`, and another
 area's by that area's name.
 
 ## Scope
