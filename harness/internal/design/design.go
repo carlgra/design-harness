@@ -1,9 +1,10 @@
-// Package design reads a repository's one design document, design/DESIGN.md,
-// and walks the repository for the files it must account for.
+// Package design reads a repository's design, design/DESIGN.md and the spine
+// of each area it defines, and walks the repository for the files the design
+// must account for.
 //
 // The document is current state: what the repository is for, how it works,
 // what must always hold, every decision in force with its reason and what was
-// rejected, and which files realise it. Its frontmatter, the spine, is the
+// rejected, and which files realise it. Its frontmatter is the
 // small part a machine reads: the globs the code lives under, the tests that
 // must exist, the repository's own gate, and what a design note must say.
 package design
@@ -21,7 +22,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Design is the frontmatter of design/DESIGN.md: the spine.
+// Design is the frontmatter of design/DESIGN.md.
 type Design struct {
 	// Files are the globs the repository's code lives under. Every source
 	// file must match one; a file that matches none is unaccounted for.
@@ -47,6 +48,95 @@ type Design struct {
 	// Serves are the RPCs and request fields the contracts repository names
 	// this one as serving, each with the test that walks it.
 	Serves []Served `yaml:"serves"`
+	// Spines are the areas this design divides the code into, each with the
+	// globs it lives under. An area's own rules are in its spine,
+	// design/spines/<name>.md, so that whoever changes one area reads this
+	// document and that one, and none of the others.
+	Spines []Area `yaml:"spines"`
+}
+
+// Area is one part of the code the design sets apart, by name and by the
+// globs it lives under.
+type Area struct {
+	Name  string   `yaml:"name"`
+	Files []string `yaml:"files"`
+}
+
+// SpinesDir is where the spines live, relative to a root.
+const SpinesDir = "design/spines"
+
+// SpinePath is where the spine of the area called name lives, relative to a
+// root.
+func SpinePath(name string) string { return SpinesDir + "/" + name + ".md" }
+
+// Spine is the design of one area: the document at design/spines/<name>.md.
+// The area's name and globs are the design's; the rules are the spine's.
+type Spine struct {
+	Name  string
+	Path  string   // relative to the root
+	Files []string // the area's globs, as the design gives them
+	// Tests are names that must appear in a test file under Files.
+	Tests []string
+	Body  string // the document after its frontmatter
+	Doc   string // the whole document, as a session is handed it
+	// Err is why the document could not be read; nil when it was.
+	Err error
+}
+
+// spineHead is the frontmatter of a spine.
+type spineHead struct {
+	Tests []string `yaml:"tests"`
+}
+
+// loadSpines reads the spine of every area the design defines, and records
+// every document under design/spines/ that belongs to no area.
+func (r *Repo) loadSpines() {
+	listed := map[string]bool{}
+	for _, a := range r.Design.Spines {
+		sp := Spine{Name: a.Name, Path: SpinePath(a.Name), Files: a.Files}
+		listed[a.Name+".md"] = true
+		b, err := os.ReadFile(filepath.Join(r.Root, filepath.FromSlash(sp.Path)))
+		if err != nil {
+			sp.Err = errors.New("no such file")
+		} else if fm, err := ParseFrontmatter(string(b)); err != nil {
+			sp.Err = err
+		} else {
+			var h spineHead
+			if err := yaml.Unmarshal([]byte(fm.YAML), &h); err != nil {
+				sp.Err = fmt.Errorf("frontmatter: %w", err)
+			}
+			sp.Tests, sp.Body, sp.Doc = h.Tests, fm.Body, string(b)
+		}
+		r.Spines = append(r.Spines, sp)
+	}
+	entries, _ := os.ReadDir(filepath.Join(r.Root, filepath.FromSlash(SpinesDir)))
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") && !listed[e.Name()] {
+			r.StraySpines = append(r.StraySpines, SpinesDir+"/"+e.Name())
+		}
+	}
+}
+
+// AreasOf are the names of the areas whose globs account for f.
+func (r *Repo) AreasOf(f string) []string {
+	var names []string
+	for _, a := range r.Design.Spines {
+		if Claimed(a.Files, f) {
+			names = append(names, a.Name)
+		}
+	}
+	return names
+}
+
+// Spine is the spine of the area called name, nil when the design defines no
+// such area.
+func (r *Repo) Spine(name string) *Spine {
+	for i := range r.Spines {
+		if r.Spines[i].Name == name {
+			return &r.Spines[i]
+		}
+	}
+	return nil
 }
 
 // Served is one RPC or request field this repository serves, by its fully
@@ -89,6 +179,11 @@ type Repo struct {
 	Name   string // the repository's name: its origin remote's, else the directory's
 	Design Design
 	Body   string // the document after its frontmatter
+
+	// Spines are the spines of the areas the design defines, in its order;
+	// StraySpines are documents under design/spines/ that no area names.
+	Spines      []Spine
+	StraySpines []string
 
 	// NestedRepos are directories, relative to Root, that hold their own .git.
 	// Commands record their names and never descend into them.
@@ -157,6 +252,7 @@ func Load(root string) (*Repo, error) {
 		return nil, fmt.Errorf("%s: frontmatter: %w", DocPath, err)
 	}
 	r.Body = fm.Body
+	r.loadSpines()
 	if err := r.walk(); err != nil {
 		return nil, err
 	}

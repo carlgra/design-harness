@@ -23,16 +23,16 @@ machine reads:
 ```
 your-project/
   design/
-    DESIGN.md          the design of this repository: its spine, its rules, its decisions
+    DESIGN.md          the design of this repository: its rules, its decisions, and the part a machine reads
     changes/           one short note per change: problem, plan, alternatives, files
   harness/             the checker, the scripts and the hooks, copied in
   CLAUDE.md            the method's rules for an agent, then the project's own
-  src/ ...             the code, every file of it under a path the spine lists
+  src/ ...             the code, every file of it under a path the design lists
 ```
 
 `design/DESIGN.md` has two parts.
 
-- **The spine** is its YAML frontmatter: which paths hold the code, which tests must
+- **The frontmatter** is YAML at the top of the file: which paths hold the code, which tests must
   exist, the command that is the repository's own gate. The checker reads it and refuses
   a push in which a source file is under no path it lists, or a test it names does not
   exist.
@@ -64,8 +64,40 @@ your-project/
   - *What no machine proves yet*: every rule that is still held only by a person
     reading, and what would prove it.
 
+**One large repository.** A design is read whole before a change, so it has to stay
+small enough to read. Where one document cannot hold a repository's rules, a monolith of
+millions of lines for instance, the design divides the code into areas and each area has
+a **spine**: a document of the same shape holding the rules of that area alone.
+
+```
+your-project/
+  design/
+    DESIGN.md          what binds every area, and the list of areas with the paths each holds
+    spines/
+      checkout.md      the rules of checkout: its invariants, its decisions, its files
+      catalogue.md     the rules of catalogue
+    changes/
+  src/checkout/ ...    under one area at most; the checker refuses a file two areas hold
+  src/catalogue/ ...
+```
+
+```yaml
+# the top of design/DESIGN.md
+spines:
+  - name: checkout
+    files: [src/checkout/**, src/payments/**]
+  - name: catalogue
+    files: [src/catalogue/**]
+```
+
+Whoever changes `src/checkout/` reads `design/DESIGN.md` and `design/spines/checkout.md`,
+and none of the other spines, so an agent's context holds the rules that bind the change
+and not the rest. `go -C harness run ./cmd/check -for <path>` says which documents those
+are. Each spine numbers its own invariants and decisions; from outside, checkout's third
+decision is `checkout/ADR-0003`. A repository that fits in one document has no spines.
+
 **Several repositories.** Each component is a repository of its own, with its own
-`design/DESIGN.md`: its own spine and its own rules. They are checked out side by side
+`design/DESIGN.md`, with its own rules. They are checked out side by side
 inside a project folder, the root, which is a repository too and holds what binds all of
 them. The definitions they talk through, gRPC with protobuf, live in one repository
 beside them and nowhere else.
@@ -75,12 +107,12 @@ project/                     the root: a repository
   design/DESIGN.md           the rules every repository below is bound by, and the map of them
   harness/                   the one harness; each repository below runs it as ../harness
   contracts/                 a repository: the definitions between components
-    design/DESIGN.md         its spine and rules
+    design/DESIGN.md         its own rules
     design/changes/          a note per change, naming who serves each new RPC or field
     billing/v1/billing.proto
     ledger/v1/ledger.proto
   billing/                   a repository: one component
-    design/DESIGN.md         its spine and rules; cites the root's as project/ADR-0004
+    design/DESIGN.md         its own rules; cites the root's as project/ADR-0004
     design/changes/
     ...
   ledger/                    a repository: another
@@ -101,9 +133,10 @@ below.
 bootstrap            adopt the method in a project that already exists
 harness/             everything that is copied into a project
   FRAMEWORK.md       the method, in full: read this first
-  cmd/check          the checker: files accounted for, named tests exist, ids land, notes have their parts
-  cmd/coldread       two sessions with no memory read the design: comprehension, readiness
-  cmd/reverse       reverse-engineer the design of existing code: survey, skeleton, draft
+  cmd/check          the checker: files accounted for, named tests exist, ids land, notes have their parts;
+                     -for <path> names the documents to read before changing it
+  cmd/coldread       two sessions with no memory read the design, or one area's spine with it: comprehension, readiness
+  cmd/reverse        reverse-engineer the design of existing code, whole or one area at a time: survey, skeleton, draft
   cmd/subject        is a commit's subject a Conventional Commit (optional, per repository)
   cmd/sync           at a root: clone and fetch the repositories its design lists
   safe-push          the one way a branch is pushed: check, push, open the pull request

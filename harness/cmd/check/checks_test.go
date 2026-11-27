@@ -92,7 +92,7 @@ func TestAnIdIsDefinedOnceAndEveryCitationLands(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			res := &Result{}
-			checkIDs(c.body, nil, res)
+			checkIDs(&design.Repo{Name: "x", Body: c.body}, nil, res)
 			if len(res.Failures) != len(c.refused) {
 				t.Fatalf("expected %d refusal(s), got %v", len(c.refused), res.Failures)
 			}
@@ -151,12 +151,12 @@ func TestACitationOfTheRootLandsInTheRootsDesign(t *testing.T) {
 	parent := &design.Parent{Name: "project", Body: "### ADR-0004 — interfaces live in contracts\n\n- **INV-002** — a thing.\n"}
 	body := "### ADR-0001 — this service is Go\n\nBound by project/ADR-0004 and project/INV-002, and by project/ADR-0099 twice: project/ADR-0099.\nSee also elsewhere/ADR-0500.\n"
 	res := &Result{}
-	checkIDs(body, parent, res)
+	checkIDs(&design.Repo{Name: "billing", Body: body}, parent, res)
 	if len(res.Failures) != 1 || !strings.Contains(res.Failures[0], "cites project/ADR-0099") || !strings.Contains(res.Failures[0], "project's design does not define") {
 		t.Fatalf("expected only project/ADR-0099 to be refused, got %v", res.Failures)
 	}
 	res = &Result{}
-	checkIDs(body, nil, res)
+	checkIDs(&design.Repo{Name: "billing", Body: body}, nil, res)
 	if res.failed() {
 		t.Fatalf("a repository under no root had a qualified citation looked up: %v", res.Failures)
 	}

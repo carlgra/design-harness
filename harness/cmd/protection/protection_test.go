@@ -215,13 +215,13 @@ func TestSettingAddsWhatIsLackingAndChangesNothingElse(t *testing.T) {
 
 // The design asks for the server's protection to be read, or it is not read.
 func TestProtectionIsReadOnlyWhereTheDesignAsks(t *testing.T) {
-	for spine, want := range map[string]bool{"": false, "protection: required\n": true} {
+	for frontmatter, want := range map[string]bool{"": false, "protection: required\n": true} {
 		root := t.TempDir()
 		os.MkdirAll(filepath.Join(root, "design"), 0o755)
-		os.WriteFile(filepath.Join(root, "design", "DESIGN.md"), []byte("---\nfiles:\n  - app/**\n"+spine+"---\n\n# x\n"), 0o644)
+		os.WriteFile(filepath.Join(root, "design", "DESIGN.md"), []byte("---\nfiles:\n  - app/**\n"+frontmatter+"---\n\n# x\n"), 0o644)
 		got, err := Asked(root)
 		if err != nil || got != want {
-			t.Errorf("%q: asked %v, %v", spine, got, err)
+			t.Errorf("%q: asked %v, %v", frontmatter, got, err)
 		}
 	}
 	root := t.TempDir()

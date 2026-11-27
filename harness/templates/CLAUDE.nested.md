@@ -43,7 +43,10 @@ decision there applies here unchanged. The method is in `{{HARNESS}}/FRAMEWORK.m
 ## Before you build
 
 Run the checker from this directory, `go -C {{HARNESS}} run ./cmd/check`, then read
-`design/DESIGN.md` for the part you are about to change. If what you need is not there,
+`design/DESIGN.md` for the part you are about to change. Where the design divides the code into areas (`spines:` in its
+frontmatter), each area's own rules are in its spine, `design/spines/<area>.md`:
+`go -C {{HARNESS}} run ./cmd/check -for <path>...` names the documents to read for the paths
+you are about to change. Read those, and not the spines of other areas. If what you need is not there,
 that is the first thing to fix. When a design change is material,
 `go -C {{HARNESS}} run ./cmd/coldread -change "..."` asks two sessions with no memory
 whether the document explains the repository and whether the change could be built from

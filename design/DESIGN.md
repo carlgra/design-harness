@@ -1,5 +1,5 @@
 ---
-# The spine: the part of the design a machine reads. Everything under the
+# The frontmatter: the part of the design a machine reads. Everything under the
 # second line of dashes is read by people, and by sessions with no memory.
 #
 # The code this design accounts for. Every source file must be under one of
@@ -22,7 +22,7 @@ tests:
   - TestAVerdictIsReadFromTheLastLineAndNothingElseCounts
   - TestASessionIsStartedWithExactlyTheToolsItIsGiven
   - TestTheSurveySaysWhatIsThereAndDecidesNothing
-  - TestASkeletonsSpineAccountsForEveryFileAndSwitchesNothingOn
+  - TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn
   - TestADraftIsReadAsTheDesignAndTheRules
   - TestADraftNeverReplacesADesignSomeoneWrote
   - TestTheProjectsRulesReplaceOnlyTheirOwnSection
@@ -54,6 +54,18 @@ tests:
   - TestSettingAddsWhatIsLackingAndChangesNothingElse
   - TestProtectionIsReadOnlyWhereTheDesignAsks
   - TestAPushIsRefusedWhileTheServersProtectionLacksSomething
+  - TestADesignDividedIntoAreasPasses
+  - TestAnAreaHasASpineAndASpineHasAnArea
+  - TestAFileIsUnderOneSpine
+  - TestASpinesTestIsInItsOwnArea
+  - TestACitationAcrossDocumentsLandsInTheOneNamed
+  - TestAnAreasNameCanQualifyAnId
+  - TestTheDocumentsToReadAreTheDesignAndTheAreasSpine
+  - TestAnAreaIsReadWithTheDesignAndWithoutTheOtherAreas
+  - TestASpinesSkeletonIsWrittenOnlyForAnAreaTheDesignDefines
+  - TestASpineIsDraftedFromItsAreaAndTheDesignAlone
+  - TestADraftedSpineReplacesOnlyASkeleton
+  - TestEveryAreaADraftDefinesIsGivenASkeleton
 # The repository's own gate, run from the root after the checks pass.
 validate: go -C harness vet ./... && go -C harness test ./...
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
@@ -102,8 +114,8 @@ or, where it is one of several repositories under a root, uses the root's copy
 Two things carry the method.
 
 **The design** is `design/DESIGN.md`, the one thing in a repository that must not be
-forgotten. It has a body, read by people and by model sessions, and a spine, its YAML
-frontmatter, read by a machine. The spine says which paths hold the code (`files:`),
+forgotten. It has a body, read by people and by model sessions, and YAML frontmatter,
+read by a machine. The frontmatter says which paths hold the code (`files:`),
 which tests must exist (`tests:`), the repository's own gate (`validate:`), whether a
 commit's subject is a Conventional Commit (`commits:`), whether the server's protection
 of the default branch is read before a push (`protection:`), and what a change note
@@ -113,12 +125,30 @@ they are how a repository works rather than its code: `README.md`, `CLAUDE.md`,
 `.gitattributes`. A glob ending `/**` is everything under a directory; any other is a
 path in which `*` does not cross a `/`.
 
+**A spine** is the design of one area of a repository too large for one document
+(ADR-0013). The design's frontmatter divides the code into areas under `spines:`, each a
+`name:` and the `files:` it holds, and each area has a document,
+`design/spines/<name>.md`, with the same sections as the design and the rules of that
+area alone: its invariants, its decisions, its files. Its frontmatter has one key,
+`tests:`, the tests that must exist in the area's own test files. The design then holds
+only what binds every area. Whoever changes an area reads the design and that area's
+spine, and none of the others; `check -for <path>...` prints which documents those are
+for the paths given. Each document numbers its own ids. Within a document an id is
+cited bare; an area's is cited from anywhere else as `checkout/ADR-0003`, and the
+design's is cited from a spine as `<repository>/ADR-0004`. A repository with no
+`spines:` has no areas and is one document, as before. `coldread -spine <area>` hands
+its sessions the design and then that area's spine. `reverse skeleton -spine <area>`
+writes a spine's skeleton for an area the design already defines, and `reverse draft
+-spine <area>` has one session read that area, handed the design and a survey of the
+area's files alone, and writes its reply as the spine, only over a skeleton. A draft of
+the design itself that defines areas has each one's skeleton written with it.
+
 **A cold read** is a model session with no memory, handed the document and nothing
 else.
 
 The parts, all under `harness/`:
 
-- `internal/design` reads the spine and walks the repository for the files a design
+- `internal/design` reads the frontmatter and walks the repository for the files a design
   must account for. In a git repository that is git's view, tracked plus untracked and
   not ignored; it never enters `.git` or `design/`. Directories are walked on disk,
   ignored ones included, which is how a nested repository the root's `.gitignore` hides
@@ -158,7 +188,7 @@ The parts, all under `harness/`:
   that.
 - `cmd/reverse` writes down the design of a repository that has code and no design.
   `survey` lists what a machine can see. `skeleton` writes a `design/DESIGN.md` whose
-  spine accounts for every file and whose body is questions. `draft` starts one session
+  frontmatter accounts for every file and whose body is questions. `draft` starts one session
   in the repository with the tools that read, `Read`, `Grep` and `Glob`, and no other,
   hands it `harness/reverse/reverse.md`, the survey and the shape to fill, and writes
   its reply to `design/DESIGN.md` and to the project's section of `CLAUDE.md`. `prompt`
@@ -178,9 +208,9 @@ The parts, all under `harness/`:
 - `internal/session` is the one place a model is started: the arguments, the settings
   file, the runner the tests replace.
 - `cmd/subject` and `internal/convention` say whether a subject is a Conventional
-  Commit, in a repository whose spine asks for them.
+  Commit, in a repository whose frontmatter asks for them.
 - `cmd/protection` reads how the server protects the default branch, in a repository
-  whose spine says `protection: required` (ADR-0011), and passes without reading
+  whose frontmatter says `protection: required` (ADR-0011), and passes without reading
   anything in one that does not. It needs three things of the branch: that a pull
   request is required, that the status check named `harness` is required, which is the
   name of the one job in the CI workflow, and that a force push is refused. It reads
@@ -200,8 +230,8 @@ The parts, all under `harness/`:
   one that names who may dismiss a review or bypass a pull request, which it cannot
   hand back whole; it then reads the branch again and reports what the server holds.
   `-set -n` prints what would be sent and sends nothing. `-set` acts whatever the
-  spine says, since the setting is made before the line that has it read is switched
-  on, and where the spine does not ask it says how to. When anything is lacking it
+  frontmatter says, since the setting is made before the line that has it read is switched
+  on, and where the frontmatter does not ask it says how to. When anything is lacking it
   writes all three into the branch's own protection, whatever a ruleset already
   supplies; when nothing is, it sends nothing. A value of `protection:` other than
   `required` is an error from this command, with the one value named, and never read
@@ -238,11 +268,11 @@ The parts, all under `harness/`:
   of their own on the server that this request does not carry and does not change.
   Anything else the server holds there now or comes to hold is not carried, and is the
   limit of "changes nothing else". It reads through the `gh`
-  tool as whoever is logged in, on GitHub only: where the spine asks and `origin` is
+  tool as whoever is logged in, on GitHub only: where the frontmatter asks and `origin` is
   elsewhere, it refuses and says to take the line out. The default branch is
   `origin/HEAD` as last fetched, else `main`. Under a root each repository asks for
   itself: `protection:` is not one of the rules a nested repository takes from the
-  root's spine, because it is a fact about one repository's server settings.
+  root's frontmatter, because it is a fact about one repository's server settings.
 - `safe-push` is the one way a branch is pushed. It never pushes `main`, or a branch
   not named `feat/` or `fix/`: work it finds on one is moved, commits and uncommitted
   changes both, to a new branch, and that is what is pushed. The new branch is named
@@ -263,7 +293,7 @@ The parts, all under `harness/`:
 **Several repositories.** A system is usually several repositories: each service in
 its own, checked out side by side inside a project folder, with a contracts repository
 beside them holding the definitions they talk through. The project folder is itself a
-repository, the root. Its design holds what binds all of them, and its spine lists them
+repository, the root. Its design holds what binds all of them, and its frontmatter lists them
 under `repos:`, the map. An entry is a `path:` relative to the root; a `kind:` in the
 root's own words (service, platform), of which the harness gives meaning to one,
 `contracts`, the repository that holds the definitions the others talk through; a `remote:` it is cloned from, left out for one that is local only; and
@@ -297,10 +327,10 @@ root's found on disk is not looked up.
 
 - `cmd/sync` makes the disk match the map: it clones a listed repository that is
   missing, fetches one that is there, skips one marked planned, and never merges.
-- The checker, at a root whose spine has a map, refuses a repository found on disk
+- The checker, at a root whose frontmatter has a map, refuses a repository found on disk
   under it that the map does not list: any directory with a `.git` of its own that is
   not a linked worktree, a vendored checkout included, which is then listed with no
-  remote. A spine with no `repos:`, or an empty one, is no map and nothing is held to
+  remote. Frontmatter with no `repos:`, or an empty one, is no map and nothing is held to
   it. In a nested repository it follows a citation
   qualified by the root's name into the root's design, and refuses one not defined
   there.
@@ -350,7 +380,7 @@ root's found on disk is not looked up.
   In every other repository under that root, the checker reads the contracts
   repository's notes and definitions at its merged state, and for each entry naming
   this repository as server whose name a merged definition declares, requires an item
-  under `serves:` in this repository's spine with a `test:`, and requires every test
+  under `serves:` in this repository's frontmatter with a `test:`, and requires every test
   `serves:` names to exist:
 
   ```yaml
@@ -379,15 +409,15 @@ root's found on disk is not looked up.
   contracts repository.
 
   The root's map is read at check time for this and for nothing else: to find which
-  repository is which. No rule is taken from the root's spine when a nested repository
+  repository is which. No rule is taken from the root's frontmatter when a nested repository
   is checked (INV-016).
 - `cmd/reverse`, in a nested repository, says in the survey where it sits and which
-  siblings the root lists; writes a skeleton whose spine takes the root's `commits:`
+  siblings the root lists; writes a skeleton whose frontmatter takes the root's `commits:`
   and the sections the root asks of a note, and whose scope says how the root is cited;
   and hands a drafting session the root's design after the shape, to cite and not
   restate. It is not handed the contracts repository's entries: it is told where the
   sibling is and reads it with the tools it has, and says so if it cannot. The first
-  note it writes carries every section that spine asks for, since
+  note it writes carries every section that frontmatter asks for, since
   the note is dated the day the rules begin. At a root it writes the map into the
   skeleton from the repositories it
   finds, with a kind read from each one's name: `contracts` for one called
@@ -449,7 +479,7 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   ADR-0004).
 - **Adopting takes nothing away.** It overwrites no file and replaces no hook a
   project already uses. What it adds that can refuse a push is the refusal to push
-  `main`, and the checker, against a spine written so that it passes; the project's
+  `main`, and the checker, against frontmatter written so that it passes; the project's
   own gate is left for a person to switch on (ADR-0004, ADR-0006).
 - **What a project gets is whole.** Nothing in `harness/` is needed from outside it
   (ADR-0005).
@@ -460,11 +490,12 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   account for. *(the checker; `test: TestEveryFileIsAccountedForOrRefused`)*
 - **INV-002** — A test the design names exists, as a whole word, in a test file the
   design accounts for. *(`test: TestANamedTestMustExist`)*
-- **INV-003** — A decision or invariant id is defined once in a design, and every id
-  it cites as its own is defined in it; another repository's, qualified by its name,
-  is not this document's to define. *(`test: TestAnIdIsDefinedOnceAndEveryCitationLands`)*
-- **INV-004** — A change note dated from the spine's `notes: from:` carries every
-  section the spine asks of a note, each with something under it; a note dated before
+- **INV-003** — A decision or invariant id is defined once in a document, the design or
+  a spine, and every id it cites as its own is defined in it; another repository's,
+  qualified by its name, is not this document's to define.
+  *(`test: TestAnIdIsDefinedOnceAndEveryCitationLands`)*
+- **INV-004** — A change note dated from the frontmatter's `notes: from:` carries every
+  section the frontmatter asks of a note, each with something under it; a note dated before
   is never reread. *(`test: TestADesignNoteCarriesItsParts`,
   `test: TestADesignSaysWhatItsNotesCarry`)*
 - **INV-005** — A cold-read session is handed its prompt, the design and, for readiness, the
@@ -482,14 +513,14 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   TestADraftNeverReplacesADesignSomeoneWrote`, `test:
   TestTheProjectsRulesReplaceOnlyTheirOwnSection`, `test:
   TestADraftIsReadAsTheDesignAndTheRules`)*
-- **INV-008** — A survey and a skeleton decide nothing: the spine a skeleton writes
+- **INV-008** — A survey and a skeleton decide nothing: the frontmatter a skeleton writes
   accounts for every file as it stands, names no test, asks of a note the four default
   sections from the day it is written, or under a root the sections the root asks
   (INV-016), and leaves the gate and the commit convention as
   comments. The convention is written switched on in two cases only: the history
-  already follows it, or the repository is nested under a root whose spine asks for it,
+  already follows it, or the repository is nested under a root whose frontmatter asks for it,
   which is the root's decision and not the skeleton's (INV-016). *(`test: TestTheSurveySaysWhatIsThereAndDecidesNothing`, `test:
-  TestASkeletonsSpineAccountsForEveryFileAndSwitchesNothingOn`)*
+  TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn`)*
 - **INV-009** — Adopting with bootstrap overwrites nothing that exists, adding to the
   end of a `CLAUDE.md` that is already there and leaving every line of it as it was,
   and commits nothing; and a project it has run on passes the checker with its own copy of the
@@ -506,7 +537,7 @@ root needs is named in the workflow's comment and set by a person. A root is boo
 - **INV-011** — Nothing reaches `main` except through a pull request that passed the
   checker. *(`harness/hooks/pre-push` and `harness/safe-push` refuse the push, `test:
   TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`, `test:
-  TestABranchTheCheckerRefusesIsNotPushed`; where the spine asks, the server's
+  TestABranchTheCheckerRefusesIsNotPushed`; where the frontmatter asks, the server's
   protection is read before every push, `test:
   TestAPushIsRefusedWhileTheServersProtectionLacksSomething`)*
 - **INV-012** — Nothing under `harness/` needs anything outside it, or names a
@@ -514,7 +545,7 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   beside `harness/`, runs it where it finds it, which is here, and skips where it does
   not, which is in every project's copy. *(read at review; INV-009's test proves a copy
   works alone)*
-- **INV-013** — The commit convention binds only a repository whose spine asks for it.
+- **INV-013** — The commit convention binds only a repository whose frontmatter asks for it.
   *(`test: TestTheConventionBindsOnlyARepositoryWhoseDesignAsksForIt`, `test:
   TestASubjectThatIsNotConventionalIsRefused`)*
 
@@ -527,8 +558,8 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   TestACitationOfTheRootLandsInTheRootsDesign`)*
 - **INV-016** — A repository adopted under a root has no harness of its own and points
   at the root's by relative path, unless it was adopted with `--standalone`; either
-  way the rules it takes from the root's spine, the commit convention and the sections
-  of a note, are written into its own, and no rule is read from the root's spine when
+  way the rules it takes from the root's frontmatter, the commit convention and the sections
+  of a note, are written into its own, and no rule is read from the root's frontmatter when
   it is checked. What is read from the root then is its map, to find which repository
   is which, and its design, to follow a citation. *(`test:
   TestARepositoryUnderARootUsesTheRootsHarnessAndRules`, `test:
@@ -548,6 +579,28 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   read is a refusal. *(`test: TestAListedDefinitionIsRefusedUntilItsServerNamesATest`,
   `test: TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges`, `test:
   TestARepositorysRoleIsReadFromTheRootsMap`)*
+- **INV-019** — The areas a design defines and the spines on disk are the same set: every
+  area has a spine that reads, and every document under `design/spines/` is the spine of
+  an area. A source file is under one area at most; a file under none is the design's
+  own, under its `files:`, or it is refused. *(`test:
+  TestAnAreaHasASpineAndASpineHasAnArea`, `test: TestAFileIsUnderOneSpine`, `test:
+  TestADesignDividedIntoAreasPasses`, `test: TestAnAreasNameCanQualifyAnId`)*
+- **INV-020** — A test a spine names exists in a test file its own area holds. An id
+  cited across documents of one repository, an area's by the area's name or the design's
+  by the repository's, is defined in the document named. *(`test:
+  TestASpinesTestIsInItsOwnArea`, `test: TestACitationAcrossDocumentsLandsInTheOneNamed`)*
+- **INV-021** — No session and no reader is handed another area's spine: a cold read of
+  one area is handed the design and that area's spine; a session drafting a spine is
+  handed the design and a survey of that area's files alone; and `check -for` names the
+  design and the spines of the areas the paths fall in, and no other. *(`test:
+  TestAnAreaIsReadWithTheDesignAndWithoutTheOtherAreas`, `test:
+  TestASpineIsDraftedFromItsAreaAndTheDesignAlone`, `test:
+  TestTheDocumentsToReadAreTheDesignAndTheAreasSpine`)*
+- **INV-022** — A spine is drafted only for an area the design defines, and a draft
+  replaces only a skeleton unless forced; a reply that is not a spine is kept and not
+  written. *(`test: TestASpinesSkeletonIsWrittenOnlyForAnAreaTheDesignDefines`, `test:
+  TestADraftedSpineReplacesOnlyASkeleton`, `test:
+  TestEveryAreaADraftDefinesIsGivenASkeleton`)*
 
 ## What no machine proves yet
 
@@ -589,7 +642,8 @@ and names the file the value lives in.
 ### ADR-0001 — One design document per repository, and it is current state
 
 A repository's design is one file, `design/DESIGN.md`, holding purpose, mechanism,
-invariants, decisions and the map of files. It is edited in place when something
+invariants, decisions and the map of files; a repository too large for that divides
+into areas, each with a document of its own under this one (ADR-0013). It is edited in place when something
 changes, with the reason in the commit, and git is its history. A decision keeps its id
 for life.
 
@@ -611,7 +665,7 @@ because a reader should never have to work out which of two statements still hol
 The machine checks only what it can be right about every time: files accounted for,
 named tests present, ids that land, notes with their parts. Each is a refusal with a
 line saying what and where, and there are always two fixes: amend the design or change
-the code. What the spine does not state, the checker does not check.
+the code. What the frontmatter does not state, the checker does not check.
 
 A check that is sometimes wrong gets switched off, and takes the trustworthy ones with
 it. The value of the small check is that a FAIL is never argued with.
@@ -665,7 +719,7 @@ could not know at all is written `TODO(design)` with the question, and alternati
 recorded nowhere are written `Not recorded. TODO(design)` rather than invented. A draft is written only over a skeleton; a design a
 person has edited is replaced only with `-force`. The gate and the commit convention
 are never switched on by a survey, the convention excepted when the history already
-follows it or, under a root, when the root's spine asks for it (INV-008). The model is a value in `harness/reverse/reverse.yaml`, and no session is given a spending cap, since one stopped short of the end has answered nothing; what
+follows it or, under a root, when the root's frontmatter asks for it (INV-008). The model is a value in `harness/reverse/reverse.yaml`, and no session is given a spending cap, since one stopped short of the end has answered nothing; what
 the session is told is `harness/reverse/reverse.md`.
 
 A wrong draft is faster to correct than a blank page is to fill, so the draft is worth
@@ -681,7 +735,7 @@ unconfirmed one look the same to a machine.
   file in order to write two, and a design could be overwritten without the command
   being able to refuse.
 - **Derive the design mechanically**, from the tree and the tests alone. That produces
-  the spine and a list of files; the decisions and the invariants are the part worth
+  the frontmatter and a list of files; the decisions and the invariants are the part worth
   having, and they are not in the tree.
 - **Require the design to be written by hand before adopting.** The repository goes
   unchecked for as long as that takes, which in practice is for good.
@@ -695,7 +749,7 @@ that needs nothing outside its directory and has one dependency, a YAML parser.
 The commands are run with `go -C harness run`, so the checker, the hooks and the push
 need the Go toolchain and git and nothing else, whatever language the project is
 written in. Three things need more, and say so when it is missing: opening a pull request
-needs GitHub's `gh`, so does reading the server's protection where the spine asks for
+needs GitHub's `gh`, so does reading the server's protection where the frontmatter asks for
 it (ADR-0011), and the cold read and the drafting session need the `claude`
 command-line tool. The scripts set `GOWORK=off` so that
 a project's own Go workspace does not claim the module. Updating is running
@@ -712,7 +766,7 @@ and change what refuses its pushes.
   be a string in a script rather than code in the pull request that changed it.
 - **A git submodule.** Fresh clones and worktrees arrive without it, and the hook
   fails exactly when someone new starts.
-- **Python or shell for the checker.** Shell cannot parse the spine safely; Python
+- **Python or shell for the checker.** Shell cannot parse the frontmatter safely; Python
   brings an interpreter version and a package environment into every hook. What is
   shell, `bootstrap`, `safe-push`, the two hooks and their installer, parses nothing: each only
   drives git, `gh` and the Go commands.
@@ -739,7 +793,7 @@ only push through a script that refuses does not need to remember.
 
 ### ADR-0007 — The commit convention is asked for by the design, repository by repository
 
-A repository whose spine says `commits: conventional` has every commit's subject, and
+A repository whose frontmatter says `commits: conventional` has every commit's subject, and
 its pull request's title, checked as a Conventional Commit: by the `commit-msg` hook as
 it is written and by `safe-push` before it leaves. One that does not say so is bound by
 nothing. The types accepted are a value in `harness/internal/convention`, and include
@@ -761,15 +815,15 @@ A root is a repository whose design lists the repositories nested under it. A ne
 repository has its own design, its own history and its own remote, and no harness: it
 runs the root's by relative path. What the root decided binds every repository under it
 and is cited there by the root's name and the id; a nested design records only what is
-its own. A rule the root's spine sets for all of them, the commit convention and the
-sections of a note, is written into a nested repository's own spine when it adopts the
+its own. A rule the root's frontmatter sets for all of them, the commit convention and the
+sections of a note, is written into a nested repository's own frontmatter when it adopts the
 method, and from then on is read from there. The root pins no commit of any nested
 repository: its map says which exist and where they come from, and `sync` clones them.
 
 One harness because a rule that binds several repositories must be one piece of code,
-reviewed once. Written into each spine, and not looked up, because a design must say
+reviewed once. Written into each frontmatter, and not looked up, because a design must say
 what binds its repository to a reader who has only that design, and because what a
-repository is held to should not change when the root's spine is edited for another
+repository is held to should not change when the root's frontmatter is edited for another
 repository's sake: a rule reaches a nested repository through a change to its own
 design.
 
@@ -778,7 +832,7 @@ design.
 - **A copy of the harness in every repository.** Each is updated when someone
   remembers, and the services drift onto different versions of the same check. A
   repository that needs to stand alone can still have one, with `--standalone`.
-- **Inherit the root's spine at check time.** What binds a repository would then not be
+- **Inherit the root's frontmatter at check time.** What binds a repository would then not be
   in its design, and would change when it is checked out without its root.
 - **Git submodules.** The root would record every nested commit, turning each change to
   a service into a second change to the root, and a fresh clone or worktree arrives
@@ -794,8 +848,8 @@ design.
 
 A change to code starts with `design/changes/<date>-<slug>.md`: the problem, the plan,
 the alternatives rejected, the files. The checker requires each section of every note
-dated from the spine's `notes: from:`, with something under it. A repository asks more
-of its notes by listing more sections in its spine.
+dated from the frontmatter's `notes: from:`, with something under it. A repository asks more
+of its notes by listing more sections in its frontmatter.
 
 The note is where the alternatives are written while someone still remembers them. The
 date is there because a rule binds what is written after it exists: rereading old notes
@@ -846,7 +900,7 @@ either order.
 
 ### ADR-0011 — The server's protection is read at the door, where the design asks
 
-A repository whose spine says `protection: required` has the server's protection of
+A repository whose frontmatter says `protection: required` has the server's protection of
 its default branch read by `safe-push` before every push, and the push refused while a
 pull request, the `harness` check or the refusal of a force push is missing. One that
 does not say so has nothing read. The command that reads it can also add what is
@@ -898,6 +952,51 @@ command line; the owner found the two animals confused a reader who met them col
 - **`draft` for the first command.** Its last step is `draft`, and `draft draft` reads
   as a mistake; `reverse` is what the README already called the work.
 
+### ADR-0013 — A design may divide the code into areas, each with a spine
+
+A design may name areas of the code in its frontmatter, under `spines:`, each with the
+globs it holds. Each area then has a spine, `design/spines/<name>.md`: a document with
+the design's sections and the rules of that area alone. The areas are defined in the
+design and nowhere else, so that the division is one decision read in one place; a
+spine says nothing about which files are its own. A file is under one area at most, and
+the areas and the spines on disk are the same set (INV-019). Each document numbers its
+own ids, and a citation across documents names the other (INV-020). Whoever works in an
+area, person or session, is handed the design and that area's spine and no other
+(INV-021).
+
+The reason is the reader. ADR-0001 keeps a design in one file because its reader is
+handed all of it at once. In a repository of millions of lines that file is either too
+thin to build from or too long to read before a change, and an agent that reads the
+rules of forty areas to change one has spent its attention on thirty-nine that do not
+bind it. An area's rules are read by whoever changes that area. Ids are each document's
+own because one sequence across a large repository is taken by two pull requests at
+once, and because an area's spine can then be written, read and renumbered by the
+people who own the area. The word is the one the project this method was drawn from
+used for such a document; until 2026-11-27 this repository used it for a design's
+frontmatter, which is now called the frontmatter.
+
+Nothing changes for a repository with no `spines:`.
+
+#### Alternatives rejected
+
+- **One document, however large.** The cold read fails first, and then people stop
+  reading before they change things, which is the failure the method exists to prevent.
+- **A design per directory, found by walking up from a file**, as `CLAUDE.md` files are.
+  The division is then nowhere written down, two documents can both claim a file with
+  no rule to say which wins, and a reader cannot see the areas without walking the tree.
+- **Each spine lists its own files.** The same fact in as many places as there are
+  areas: an overlap is found only by reading all of them, and moving a boundary is two
+  edits that can disagree.
+- **One sequence of ids across the repository.** Every citation would be bare, but two
+  pull requests in different areas take the same number, and a renumbering in one area
+  is a change to the whole.
+- **Split the repository into several under a root** (ADR-0009). That is the right
+  answer where the parts are built and released apart. A single application whose parts
+  ship together is one repository, and its history, build and reviews should not be cut
+  up to make its design readable.
+- **Hand a cold read every spine.** It is the whole design, but it is the size the
+  areas exist to avoid, and it is not what a person changing one area reads.
+
 ## Files
 
 | File | Purpose |
@@ -905,18 +1004,18 @@ command line; the owner found the two animals confused a reader who met them col
 | `bootstrap` | Adopts the method in a project: copies `harness/`, then adds what is missing and overwrites nothing (INV-009). `--update` replaces a project's harness and keeps its settings. |
 | `harness/FRAMEWORK.md` | The method, written for whoever works in a project that uses it. Its presence is how `bootstrap` knows a `harness/` is this one. |
 | `harness/go.mod`, `harness/go.sum` | The harness's own module, `harness`, with one dependency (ADR-0005). |
-| `harness/internal/design/` | Reads the spine, walks the repository, finds the root and the harness, matches globs, recognises test files. |
+| `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files. |
 | `harness/internal/session/` | Starts a model session through the `claude` tool with exactly the tools it is given; reads a settings file. |
 | `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007). |
-| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. |
-| `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. |
-| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. |
+| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. |
+| `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
+| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
-| `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the spine's `protection:`, the `gh` tool and what is printed. |
+| `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the frontmatter's `protection:`, the `gh` tool and what is printed. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
 | `harness/coldread/` | `comprehension.md` and `readiness.md`, the two prompts; `coldread.yaml`, the model and the verdict prefix. |
-| `harness/reverse/` | `reverse.md`, what a drafting session is told, which under a root includes citing the root and, beside a contracts repository, filling `serves:` for each definition it serves that it can name a test for; `reverse.yaml`, the model and budget. |
-| `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills, `{{NAME}}`, `{{DATE}}`, `{{FILES}}`, `{{VALIDATE}}`, `{{COMMITS}}`, `{{SECTIONS}}`, `{{REPOS}}` and `{{PARENT}}`; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow; `CLAUDE.nested.md` and `harness.nested.yml`, the same two for a repository under a root (ADR-0009). For ADR-0010, `change.md` carries a comment, for contracts repositories only, showing the `servers` block; `CLAUDE.nested.md` states both halves of the rule; and `harness.nested.yml` has one line, `{{CONTRACTS_CHECKOUT}}`, that bootstrap replaces with a checkout step for the contracts repository or removes. |
+| `harness/reverse/` | `reverse.md`, what a drafting session is told, which under a root includes citing the root and, beside a contracts repository, filling `serves:` for each definition it serves that it can name a test for; `reverse.yaml`, the model and budget. `spine.md` is what a session drafting one area's spine is told. |
+| `harness/templates/` | `DESIGN.md`, the shape of a design, with the placeholders a skeleton fills, `{{NAME}}`, `{{DATE}}`, `{{FILES}}`, `{{VALIDATE}}`, `{{COMMITS}}`, `{{SECTIONS}}`, `{{REPOS}}` and `{{PARENT}}`; `change.md`, a note; `adopt.md`, the first note; `CLAUDE.md`, the rules for an agent; `harness.yml`, the CI workflow; `CLAUDE.nested.md` and `harness.nested.yml`, the same two for a repository under a root (ADR-0009). For ADR-0010, `change.md` carries a comment, for contracts repositories only, showing the `servers` block; `CLAUDE.nested.md` states both halves of the rule; and `harness.nested.yml` has one line, `{{CONTRACTS_CHECKOUT}}`, that bootstrap replaces with a checkout step for the contracts repository or removes. `spine.md` is the shape of a spine, with `{{AREA}}`, `{{REPO}}` and `{{FILES}}`. |
 | `harness/safe-push` | The one door (ADR-0006). |
 | `harness/safe_push_test.go` | Runs the real `safe-push`, without a pull request, against a bare remote it throws away: one test for each thing the script must do or refuse. The test of ADR-0011 puts a stand-in for `gh` on the path and the remote at a path that reads as a GitHub address. The only Go file at the module's root. |
 | `harness/hooks/` | `pre-push`, `commit-msg`, and `install`. |
@@ -935,7 +1034,7 @@ Paths a fault would travel, and the test that walks each:
 - a reply that does not end in the verdict form is not a pass — `TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`
 - a session is started with the tools it was given and no other — `TestASessionIsStartedWithExactlyTheToolsItIsGiven`
 - a survey invents nothing and misses no file — `TestTheSurveySaysWhatIsThereAndDecidesNothing`
-- a skeleton passes the checker and switches nothing on — `TestASkeletonsSpineAccountsForEveryFileAndSwitchesNothingOn`
+- a skeleton passes the checker and switches nothing on — `TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn`
 - a reply that is not a design is refused, not half written — `TestADraftIsReadAsTheDesignAndTheRules`
 - a draft does not replace a design a person wrote — `TestADraftNeverReplacesADesignSomeoneWrote`
 - a project's own `CLAUDE.md` keeps everything outside the marked section — `TestTheProjectsRulesReplaceOnlyTheirOwnSection`
@@ -967,3 +1066,15 @@ Paths a fault would travel, and the test that walks each:
 - a repository that has not asked has nothing read — `TestProtectionIsReadOnlyWhereTheDesignAsks`
 - a push is refused while the server's protection lacks something, where the design asks — `TestAPushIsRefusedWhileTheServersProtectionLacksSomething`
 - an update replaces the harness and the method's rules, and nothing that is the project's — `TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`
+- a design divided into areas passes, with each file counted once — `TestADesignDividedIntoAreasPasses`
+- an area with no spine, or a spine with no area, is refused — `TestAnAreaHasASpineAndASpineHasAnArea`
+- a file two areas hold is refused, and so is one nothing holds — `TestAFileIsUnderOneSpine`
+- a test a spine names that is only in another area is refused — `TestASpinesTestIsInItsOwnArea`
+- a citation of another document's id that the document does not define is refused — `TestACitationAcrossDocumentsLandsInTheOneNamed`
+- an area whose name could be read as a repository's, or is no name, or holds nothing, is refused — `TestAnAreasNameCanQualifyAnId`
+- the documents named for a path are the design and that path's spine, and no other — `TestTheDocumentsToReadAreTheDesignAndTheAreasSpine`
+- a cold read of one area is handed the design and that spine, never another — `TestAnAreaIsReadWithTheDesignAndWithoutTheOtherAreas`
+- a skeleton is not written for an area the design does not define, or over a spine — `TestASpinesSkeletonIsWrittenOnlyForAnAreaTheDesignDefines`
+- a session drafting a spine is handed nothing of another area — `TestASpineIsDraftedFromItsAreaAndTheDesignAlone`
+- a drafted spine does not replace one a person took on, and a reply that is no spine is kept — `TestADraftedSpineReplacesOnlyASkeleton`
+- every area a drafted design defines has a spine at once, and one that was there is kept — `TestEveryAreaADraftDefinesIsGivenASkeleton`

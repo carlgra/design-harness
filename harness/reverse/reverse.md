@@ -10,7 +10,7 @@ to build a change from it. Write for that reader.
 
 After the first line of dashes below is a survey a machine made: the files, the tests
 found, the documents that may already record decisions, the commits. After the second is
-the shape to fill, with its frontmatter, the spine, as the survey gives it.
+the shape to fill, with its frontmatter as the survey gives it.
 
 ## How to work
 
@@ -43,14 +43,14 @@ to you after the shape. What the root decided binds this repository. Do not rest
 cite it by the root's name and the id, exactly as the survey shows, wherever this
 repository's code is doing what the root requires, and record here only the decisions and
 invariants that are this repository's own. Keep the paragraph in `Scope` that says where
-it sits. Keep `commits:` and `notes:` as given: they came from the root's spine.
+it sits. Keep `commits:` and `notes:` as given: they came from the root's frontmatter.
 
 Where the survey lists a sibling of kind `contracts`, the definitions repositories talk
 through live there and not here. Under `How it works`, say which of them this repository
 serves and which it calls, as far as its code shows, naming each as the code names it; if
 you can read the sibling at the path the survey gives, check the names against it, and if
 you cannot, say that you could not. For each definition this repository serves that one
-of its tests walks, add an entry to a `serves:` list in the spine, `name:` the definition
+of its tests walks, add an entry to a `serves:` list in the frontmatter, `name:` the definition
 in full as the contracts repository declares it and `test:` the test, and put the test in
 `tests:` as well. Leave out any you cannot name a test for, and give each a row under
 `What no machine proves yet`.
@@ -61,9 +61,37 @@ map as given, correcting a `kind:` only where a document says what the repositor
 add a section `The map` after `Scope` with one row per repository: path, kind, what it is.
 Do not read into the nested repositories beyond what a row needs.
 
+## A repository too large for one document
+
+A design is read whole by whoever changes anything, so it must stay small enough to read.
+If the survey shows a repository whose rules will not fit one document a person would
+read before a change, as a rule of thumb more than a few hundred source files in several
+distinct parts, divide the code into **areas**, and write this document as the design of
+the whole: what the repository is for, how the areas fit together, and only the
+invariants and decisions that bind every area. Each area's own rules go in a document of
+its own, its spine, `design/spines/<area>.md`, which a later session drafts by reading
+that area alone. Do not write the spines, and do not put an area's own rules here.
+
+Define the areas in the frontmatter:
+
+```yaml
+spines:
+  - name: checkout            # lower-case letters, digits and hyphens
+    files: [src/checkout/**]  # the globs the area holds
+```
+
+An area is a part with rules of its own that someone could change without reading the
+rest: a bounded part of the product, a layer, a package. Draw them where the code already
+draws them, by directory. No file may fall under two areas. A file under no area must
+still fall under a glob in `files:`, and is then this document's own to describe. Add a
+section `The areas` after `How it works`, with one row per area: its name, its files and
+what it is for. Under `Files`, give each area one row and leave the detail to its spine.
+
+A repository small enough for one document has no `spines:` and no such section.
+
 ## What each section holds
 
-**The spine** (the frontmatter). Keep its comments and its `notes:` block as given.
+**The frontmatter.** Keep its comments and its `notes:` block as given.
 - `files:` starts as the coarsest globs that cover everything. Narrow it where that says
   more, a glob per part, but every file that exists must still fall under one: a trailing
   `/**` is everything under a directory, otherwise `*` does not cross a `/`. Never drop a
@@ -91,7 +119,7 @@ schema, assertions, authorisation checks, error paths, a test named for a rule, 
 that says must, never or always, a CI step that fails the build. Each is one list item:
 `- **INV-001** — the rule, as a sentence that is true. *(what proves it)*`. Number them in
 order. What proves it is one of: `test: TheTestName` for a test that exists and that you
-have read, which also goes in the spine's `tests:`; `the checker` for INV-001 as given;
+have read, which also goes in the frontmatter's `tests:`; `the checker` for INV-001 as given;
 the name of the mechanism, such as a database constraint or a CI step, with its file; or
 `read at review` when nothing does. Keep INV-001 as the shape has it.
 
@@ -116,7 +144,7 @@ current state. Cite decisions and invariants only by ids you define.
 
 **Files.** A table: every path under `files:`, at the grain a reader needs, and what it is
 for. Then the paths a fault would travel and the test that walks each, one per line, for
-every name in the spine's `tests:`.
+every name in the frontmatter's `tests:`.
 
 ## The project's rules
 

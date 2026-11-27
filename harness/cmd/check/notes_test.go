@@ -49,12 +49,12 @@ func TestADesignNoteCarriesItsParts(t *testing.T) {
 // required from the date it says, read from the frontmatter as written.
 func TestADesignSaysWhatItsNotesCarry(t *testing.T) {
 	var d design.Design
-	spine := "notes:\n  from: 2026-11-24\n  sections: [Problem, Plan, Alternatives rejected, Files, What existing data changes meaning]\n"
-	if err := yaml.Unmarshal([]byte(spine), &d); err != nil {
+	frontmatter := "notes:\n  from: 2026-11-24\n  sections: [Problem, Plan, Alternatives rejected, Files, What existing data changes meaning]\n"
+	if err := yaml.Unmarshal([]byte(frontmatter), &d); err != nil {
 		t.Fatal(err)
 	}
 	if d.Notes.From != "2026-11-24" || len(d.Notes.Sections) != 5 {
-		t.Fatalf("the spine was read as %+v", d.Notes)
+		t.Fatalf("the frontmatter was read as %+v", d.Notes)
 	}
 	res := &Result{}
 	checkNotes([]Note{

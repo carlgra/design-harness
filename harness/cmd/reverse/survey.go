@@ -21,7 +21,7 @@ type Survey struct {
 	Name  string
 	Date  string
 	Files int
-	// Globs are a spine's files: that account for every file as it stands:
+	// Globs are frontmatter's files: that account for every file as it stands:
 	// each top-level directory whole, each root file by name.
 	Globs     []string
 	Languages []Count
@@ -99,7 +99,7 @@ var docDirs = []string{"docs/", "doc/", "adr/", "adrs/", "decisions/", "rfcs/", 
 const maxListed = 200
 
 // survey reads the repository as walked. subjects are recent commit subjects,
-// newest first, and today the date a new spine's rules begin.
+// newest first, and today the date the rules for a note begin.
 func survey(repo *design.Repo, parent *design.Parent, subjects []string, today string) Survey {
 	s := Survey{Name: repo.Name, Date: today, Subjects: subjects, Nested: repo.NestedRepos, Parent: parent}
 	for _, n := range repo.NestedRepos {
@@ -241,7 +241,7 @@ func testNames(root, f string) []string {
 }
 
 // gates looks for the command the repository already proves itself with. It
-// suggests; the spine's validate: is a person's to set, because a gate that
+// suggests; the frontmatter's validate: is a person's to set, because a gate that
 // fails today would refuse every push from the moment it is written down.
 func gates(repo *design.Repo) []Gate {
 	has := map[string]bool{}
@@ -333,7 +333,7 @@ func recentSubjects(root string, n int) []string {
 }
 
 // AsksConventional reports whether the history already follows the
-// convention closely enough that the spine may ask for it: at least twenty
+// convention closely enough that the frontmatter may ask for it: at least twenty
 // subjects, four in five of them conventional.
 func (s Survey) AsksConventional() bool {
 	return len(s.Subjects) >= 20 && s.Conventional*5 >= len(s.Subjects)*4
@@ -350,7 +350,7 @@ func (s Survey) Markdown() string {
 		fmt.Fprintf(b, "\n%d of the files are `harness/`, the method's own harness, copied in. It is accounted for by `harness/**` and is not surveyed below: its tests and documents are not this project's.\n", s.Harness)
 	}
 	if len(s.Map) > 0 {
-		b.WriteString("\nRepositories nested under this one, which makes it a root. The walk does not enter them and this design does not account for their files; each has, or will have, a design of its own. The spine's `repos:` lists them:\n\n")
+		b.WriteString("\nRepositories nested under this one, which makes it a root. The walk does not enter them and this design does not account for their files; each has, or will have, a design of its own. The frontmatter's `repos:` lists them:\n\n")
 		for _, e := range s.Map {
 			remote := e.Remote
 			if remote == "" {
@@ -388,7 +388,7 @@ func (s Survey) Markdown() string {
 		list(b, s.TestFiles, "`%s`")
 	}
 	if len(s.Tests) > 0 {
-		b.WriteString("\nTest names, the only ones the spine's `tests:` may name:\n\n")
+		b.WriteString("\nTest names, the only ones the frontmatter's `tests:` may name:\n\n")
 		list(b, s.Tests, "`%s`")
 	}
 	b.WriteString("\n## The repository's own gate\n\n")
@@ -436,14 +436,14 @@ func list(b *strings.Builder, items []string, format string) {
 	}
 }
 
-// Skeleton fills the design template with what the survey found: a spine that
+// Skeleton fills the design template with what the survey found: frontmatter that
 // accounts for every file as it stands, and a body whose every section is
 // still a question. The template's placeholders are {{NAME}}, {{DATE}},
 // {{FILES}}, {{VALIDATE}}, {{COMMITS}} and {{SECTIONS}}, and two that are a
 // line of their own and are removed when there is nothing to say: {{REPOS}},
 // the map of a root, and {{PARENT}}, where a nested repository sits.
 //
-// A repository nested under a root takes two things from the root's spine,
+// A repository nested under a root takes two things from the root's frontmatter,
 // written into its own so that they are there to be read: the commit
 // convention, and the sections the root asks of a note.
 func (s Survey) Skeleton(template string) string {
@@ -500,7 +500,7 @@ func (s Survey) Skeleton(template string) string {
 	).Replace(template)
 }
 
-// Sections are the sections a skeleton's spine asks of a note: the root's,
+// Sections are the sections a skeleton's frontmatter asks of a note: the root's,
 // for a repository nested under a root that asks for its own, and the four
 // defaults for any other.
 func (s Survey) Sections() []string {
@@ -548,7 +548,7 @@ func (s Survey) HarnessPath() string {
 }
 
 // AdoptionNote fills the first note, the one that records adopting the
-// method, and gives it every section the skeleton's spine asks of a note: the
+// method, and gives it every section the skeleton's frontmatter asks of a note: the
 // note is dated the day the rules begin, so it is held to them. A section the
 // template does not have is one a root added, and adopting the method has one
 // true answer to any of them.

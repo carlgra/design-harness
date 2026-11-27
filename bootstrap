@@ -21,7 +21,7 @@
 # root's name. Bootstrap the root first, then each repository inside it.
 #
 # Otherwise it copies harness/ into the project and then adds only what is missing: a
-# design/DESIGN.md whose spine accounts for every file as it stands and whose
+# design/DESIGN.md whose frontmatter accounts for every file as it stands and whose
 # every section is still a question, the first note under design/changes/,
 # the method's rules in CLAUDE.md, the CI workflow, and the git hooks. It
 # overwrites nothing that exists and commits nothing: what it did is yours to
@@ -220,8 +220,8 @@ if [ "$CI" -eq 1 ]; then
 fi
 
 # --------------------------------------------------------------------------
-# The design, last, so that its spine accounts for everything written above.
-# A skeleton: the spine is filled from a survey of what is there, so the
+# The design, last, so that its frontmatter accounts for everything written above.
+# A skeleton: the frontmatter is filled from a survey of what is there, so the
 # checker passes at once; the body is questions.
 mkdir -p "$T/design/changes"
 if [ -f "$T/design/DESIGN.md" ]; then
