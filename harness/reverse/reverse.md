@@ -36,6 +36,32 @@ one row under `Files`, name none of its tests, and do not spend reading on it;
      `TODO(design):` and the question a person must answer.
    A confident guess is the failure. A marked gap is the document working.
 
+## What belongs in a design
+
+A design is the set of rules a codebase is governed by. It is not a description of the
+code, and it is not where small decisions go. Before you write a rule or a decision, put
+it to this test:
+
+A rule or a decision belongs in a design when it has to be governed: it binds more
+than one part or more than one person's work, a change could break it without anyone
+noticing at the place it was broken, and whoever changes the code must know it
+beforehand. A choice made inside one function or one file, which whoever edits it can
+see and can change safely, is code, and stays in the code.
+
+So: a rule about how parts depend on each other, what may call what, where data lives
+and who may write it, what crosses a boundary and in what form, what must never happen,
+belongs. How one function is written, the name of a helper, the order of steps inside a
+method, a constant's value, do not. Twelve rules that bind the whole are a better design
+than a hundred true statements about the code. If you are unsure, leave it out.
+
+The repository may already have documents that govern it: architecture documents,
+standing rules for contributors or reviewers, decision records, conventions. Bring what
+they govern into this document, as decisions and invariants in its format, each with its
+reason where the document gives one. Do not point at them as rules that stay in force
+elsewhere, and do not copy their descriptions of the code. The aim is one place where a
+rule is written. Where you bring a rule in, name the document it came from in the
+sentence, so that a person can retire the old copy.
+
 ## A repository that is one of several
 
 If the survey says the repository is **nested under a root**, the root's design is given
@@ -114,7 +140,7 @@ sentence, citing the decision that sets it. Keep the one the shape already has. 
 ones beat ten plausible ones.
 
 **What must always hold.** The invariants: what must be true for the system to be correct,
-whatever changes. Look for them where code refuses things: validation, constraints in a
+whatever changes, at the level of the architecture and not of one function. Look for them where code refuses things: validation, constraints in a
 schema, assertions, authorisation checks, error paths, a test named for a rule, a comment
 that says must, never or always, a CI step that fails the build. Each is one list item:
 `- **INV-001** — the rule, as a sentence that is true. *(what proves it)*`. Number them in
@@ -130,8 +156,8 @@ the table out.
 
 **How a change lands.** Keep as given.
 
-**Decisions.** One `### ADR-NNNN — title` for each material choice the repository
-embodies, numbered from ADR-0001 in the order a reader needs them: the language and
+**Decisions.** One `### ADR-NNNN — title` for each choice the repository embodies that
+has to be governed, by the test above, numbered from ADR-0001 in the order a reader needs them: the language and
 framework, how it is structured into parts, where data lives and in what store, how it
 talks to anything outside itself, how it is built, deployed and configured, how it
 authenticates, what it deliberately leaves out. The title is the decision as a sentence

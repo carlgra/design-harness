@@ -14,8 +14,9 @@ tests: []
 This is the spine of `{{AREA}}`, one area of `{{REPO}}`: what the area is for, how it
 works, what must always hold in it, every decision in force with its reason and what
 was rejected, and which files realise it. It is read after `design/DESIGN.md`, which
-holds what binds every area, and without the spines of the other areas. It is current
-state, edited in place; git is its history.
+holds what binds every area, and without the spines of the other areas. It holds what
+must be governed in this area and nothing else. It is current state, edited in place;
+git is its history.
 
 The files it holds, as `design/DESIGN.md` gives them:
 

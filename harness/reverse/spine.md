@@ -38,6 +38,32 @@ third is the repository's design.
      `TODO(design):` and the question a person must answer.
    A confident guess is the failure. A marked gap is the document working.
 
+## What belongs in a design
+
+A design is the set of rules a codebase is governed by. It is not a description of the
+code, and it is not where small decisions go. Before you write a rule or a decision, put
+it to this test:
+
+A rule or a decision belongs in a design when it has to be governed: it binds more
+than one part or more than one person's work, a change could break it without anyone
+noticing at the place it was broken, and whoever changes the code must know it
+beforehand. A choice made inside one function or one file, which whoever edits it can
+see and can change safely, is code, and stays in the code.
+
+So: a rule about how parts depend on each other, what may call what, where data lives
+and who may write it, what crosses a boundary and in what form, what must never happen,
+belongs. How one function is written, the name of a helper, the order of steps inside a
+method, a constant's value, do not. Twelve rules that bind the whole are a better design
+than a hundred true statements about the code. If you are unsure, leave it out.
+
+The repository may already have documents that govern it: architecture documents,
+standing rules for contributors or reviewers, decision records, conventions. Bring what
+they govern into this spine, where they are this area's alone, as decisions and invariants in its format, each with its
+reason where the document gives one. Do not point at them as rules that stay in force
+elsewhere, and do not copy their descriptions of the code. The aim is one place where a
+rule is written. Where you bring a rule in, name the document it came from in the
+sentence, so that a person can retire the old copy.
+
 ## What each section holds
 
 **The frontmatter.** Keep its comments. `tests:` names the tests that walk a path a fault
@@ -65,8 +91,8 @@ which also goes in `tests:`; the name of a mechanism with its file; or `read at 
 `read at review`. If every invariant is proved, say so in a sentence and leave the table
 out.
 
-**Decisions.** One `### ADR-NNNN — title` for each material choice this area embodies and
-the repository's design does not already record, numbered from ADR-0001 in this
+**Decisions.** One `### ADR-NNNN — title` for each choice this area embodies that has to
+be governed, by the test above, and that the repository's design does not already record, numbered from ADR-0001 in this
 document's own numbering. The title is the decision as a sentence that is true. Under it:
 what was decided and why, stated as a constraint and not a value, naming the file a value
 lives in. Then `#### Alternatives rejected`. Cite only ids that are defined: this

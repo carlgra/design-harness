@@ -5,6 +5,9 @@ every repository that uses it and nothing has to be looked up elsewhere.
 
 ## The idea
 
+This is a way of writing down a codebase's design and architecture and enforcing them:
+the rules it is governed by, in one format, with a machine that holds the code to them.
+
 An agent writes most of the code now. The judgments that used to be left in the code, and
 in the heads of the people who wrote it, are lost every time a session ends. So they are
 written down first, in one document per repository, and the code is derived from it.
@@ -51,6 +54,23 @@ One file. Its sections, in order:
 | How a change lands | The path from a note to `main`. |
 | Decisions | Every decision in force: what, why, and the alternatives rejected. |
 | Files | Every path the frontmatter accounts for and what it is for; then each path a fault would travel and the test that walks it. |
+
+What belongs in it:
+
+- **Only what must be governed.** A rule or a decision belongs in a design when it has to be governed: it binds more
+  than one part or more than one person's work, a change could break it without anyone
+  noticing at the place it was broken, and whoever changes the code must know it
+  beforehand. A choice made inside one function or one file, which whoever edits it can
+  see and can change safely, is code, and stays in the code.
+  A design that holds everything is read by nobody, and a rule lost among a hundred
+  descriptions is not kept.
+- **One place for a rule, in one format.** A project that already has architecture
+  documents, standing rules or decision records brings what they govern into the design
+  when it adopts the method, as decisions and invariants, and retires the old copies. The
+  design does not point at a second set of rules that stays in force: two places that
+  say what governs are two standards. Every project that works this way then holds its
+  standards in the same shape, and a person or an agent who knows one knows where to
+  look in the next.
 
 How it is written:
 

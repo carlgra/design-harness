@@ -21,6 +21,10 @@ get it right, from the design alone? If yes, the design passes this test. If you
 have to guess at something that changes what you build, or read something you were not
 given, it fails.
 
+A design holds what must be governed, not every detail of the code. A choice it leaves
+to whoever builds, which no rule binds and which could safely go either way, is not a
+gap; a rule the change would have to keep and the design does not state is.
+
 A change that is itself to `design/` is implemented by making the design say what the
 change says; judge whether what you were given lets you see that the change is complete
 and consistent with the rest.

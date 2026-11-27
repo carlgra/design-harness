@@ -90,8 +90,9 @@ file saying what is now true.
 
 ## Scope
 
-This repository is a method for working on a codebase with agents, and the scripts
-that enforce it. The method: each repository has one design document, the code is
+This repository is a tool for writing down a codebase's design and architecture and
+enforcing them, made for codebases that agents work on: a method, and the scripts that
+enforce it. A design holds what must be governed and nothing else (ADR-0014). The method: each repository has one design document, the code is
 derived from it, a machine refuses a push in which the two disagree, and a session
 with no memory is asked whether the document alone is enough to understand the
 repository and to build a change.
@@ -469,6 +470,9 @@ root needs is named in the workflow's comment and set by a person. A root is boo
 
 ## Principles
 
+- **A design governs; it does not describe.** Only what must be governed goes in one,
+  each project's rules are written once, and every project holds them in the same
+  format (ADR-0014).
 - **The design is current state; git is the history.** This document says what is
   decided now, is edited when that changes with the reason in the commit, and keeps
   each decision's id for life so that citations land (ADR-0001).
@@ -609,6 +613,7 @@ that due. None is accepted as final.
 
 | Gap | Today | Destination | Trigger |
 |---|---|---|---|
+| A design holds only what must be governed (ADR-0014) | The prompts and the documents say so; a person reads a draft for it | A size each document is held to and reported at, and a cold read asked whether each rule earns its place | The first design that a cold read passes and a person finds too long to read |
 | INV-005 | the command hands a session only the prompt, the design and for readiness the change, and runs it away from the project; the `claude` tool may still load a person's own global instructions and memory into it | a start-up mode of the tool that loads nothing and still uses the stored login, named in `internal/session`, with the test extended to pin it | the tool offering one |
 | INV-011 | the server's protection is read at a push, by a repository that asks, as an administrator; switched off and merged past in the server's own pages, nothing says so until the next administrator pushes, and a repository none of whose administrators push is never read | a scheduled CI job that reads it with a token an administrator stored, and fails | the first project that asks for it |
 | INV-011 | `-set` carries back the settings of a protection that are listed in *How it works*; one the server adds later is dropped by it without a word | `-set` refuses a protection holding a key it does not know | the first one lost |
@@ -996,6 +1001,43 @@ Nothing changes for a repository with no `spines:`.
   up to make its design readable.
 - **Hand a cold read every spine.** It is the whole design, but it is the size the
   areas exist to avoid, and it is not what a person changing one area reads.
+
+### ADR-0014 — A design holds what must be governed, and nothing else
+
+The method is a tool for documenting a codebase's design and architecture and enforcing
+them. A rule or a decision belongs in a design when it has to be governed: it binds
+more than one part or more than one person's work, a change could break it without
+anyone noticing at the place it was broken, and whoever changes the code must know it
+beforehand. A choice inside one function or one file, which whoever edits it can see
+and change safely, is code and stays there. A project that already has architecture
+documents, standing rules or decision records brings what they govern into the design
+when it adopts the method and retires the old copies; the design does not point at a
+second set that stays in force. Every project that adopts the method so holds its
+standards once, in one format.
+
+This was the purpose from the start and was written nowhere, and what was not written
+was not kept: the README described the mechanics, the drafting prompts said to write
+what the code proves, and a first draft on a large repository came back with rules at
+the level of one function, beside architecture documents that still said the same
+things another way. A document that holds everything is read by nobody, and a rule
+among a hundred descriptions is not enforced. One format across projects is what lets a
+person, an agent or a check move from one to the next.
+
+What says so: the opening of `README.md` and of `harness/FRAMEWORK.md`, the two drafting
+prompts, the templates' opening paragraphs and the rules in a project's `CLAUDE.md`.
+No machine holds a design to it yet.
+
+#### Alternatives rejected
+
+- **A design describes the whole repository, so that a session can build from it
+  alone.** It was never the aim, and it does not scale: the document grows with the
+  code and goes stale with every edit. A cold read asks whether what governs a change
+  is there, not whether every detail is.
+- **Leave a project's existing documents in force and cite them.** Less work on the day
+  of adoption, and two standards from then on, with nothing to say which wins and
+  nothing a checker can hold.
+- **Let each project choose its own format for its rules.** Then nothing learned in one
+  carries to the next, and no check can be written once for all of them.
 
 ## Files
 

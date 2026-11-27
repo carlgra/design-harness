@@ -22,7 +22,9 @@ Read `README.md`, then `design/DESIGN.md`. The method this repository works by i
    pull request. A person merges.
 4. **A new decision is recorded; a change within the decisions in force is not one.** Add
    or amend a decision in `design/DESIGN.md` only when something is newly decided, reversed
-   or renamed. Tuning a value a decision already constrains is code.
+   or renamed. Tuning a value a decision already constrains is code. Only what
+   must be governed goes in the design: a choice inside one function or file, which
+   whoever edits it can see and change safely, stays in the code.
 5. **Anything found and not finished is an issue before the conversation ends**, with what
    was seen and what it needs.
 
