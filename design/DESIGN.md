@@ -57,6 +57,8 @@ tests:
   - TestANewDefinitionIsListedWithItsServer
   - TestAListedDefinitionIsRefusedUntilItsServerNamesATest
   - TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges
+  - TestTheContractsRulesSayWhenTheyAreOff
+  - TestATestServesNamesExistsWhateverTheMapSays
   - TestAProtectionThatLacksSomethingIsNamedForIt
   - TestAProtectionThatCannotBeReadIsNotTakenForNone
   - TestSettingAddsWhatIsLackingAndChangesNothingElse
@@ -438,8 +440,9 @@ root's found on disk is not looked up.
   In every other repository under that root, the checker reads the contracts
   repository's notes and definitions at its merged state, and for each entry naming
   this repository as server whose name a merged definition declares, requires an item
-  under `serves:` in this repository's frontmatter with a `test:`, and requires every test
-  `serves:` names to exist:
+  under `serves:` in this repository's frontmatter with a `test:`. Every test `serves:`
+  names must exist, and that is held in every repository, under a root or not and
+  whatever the map says, since it needs no contracts repository to be found:
 
   ```yaml
   serves:
@@ -459,9 +462,21 @@ root's found on disk is not looked up.
   An entry on an unmerged branch of the contracts repository binds nothing. A contracts
   repository that is not checked out is a refusal, not a skip, in a repository that
   must read it. At a root, and under a root with no contracts repository, none of this
-  applies; a contracts repository the map marks `status: planned` is no contracts
+  applies but the existence of the tests `serves:` names; a contracts repository the map marks `status: planned` is no contracts
   repository yet, and where a map lists more than one the first that is not planned is
-  the one. A repository under the root that the map does not list yet is held as a
+  the one.
+
+  The rules are switched on by one thing, a map entry whose kind is `contracts`, so a
+  root that lists its repository of definitions under a kind of its own has all of
+  them off. The checker says so. Where no entry of the map has the kind, planned or
+  not, and the signs of a contracts repository are there, it prints one line with the
+  summary, `harness: the contracts rules are off: …`, giving each sign, the map that
+  lacks the kind, and what to do; it refuses nothing for it and the run still passes.
+  The signs are a `serves:` key in a design, a `servers` block in a note, and a
+  `.proto` file a person wrote. In a nested repository they are looked for in that
+  repository. At a root with a map they are looked for in each listed repository that
+  is on disk and not planned. A repository under no root, and a root with no map, are
+  told nothing. A repository under the root that the map does not list yet is held as a
   server: it must be able to read the contracts repository, and no entry binds it until
   the map lists it, since an entry naming a server off the map is refused in the
   contracts repository.
@@ -665,9 +680,14 @@ root needs is named in the workflow's comment and set by a person. A root is boo
 - **INV-018** — A repository the contracts repository names as serving a definition
   names, under `serves:`, a test that exists for it. A name binds from the moment a
   merged definition declares it, and not before. A contracts repository that cannot be
-  read is a refusal. *(`test: TestAListedDefinitionIsRefusedUntilItsServerNamesATest`,
+  read is a refusal. A test `serves:` names exists in every repository, whether or not
+  a contracts repository is found; and where the map gives no repository the kind
+  while the signs of one are there, the checker says the rules are off.
+  *(`test: TestAListedDefinitionIsRefusedUntilItsServerNamesATest`,
   `test: TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges`, `test:
-  TestARepositorysRoleIsReadFromTheRootsMap`)*
+  TestARepositorysRoleIsReadFromTheRootsMap`, `test:
+  TestATestServesNamesExistsWhateverTheMapSays`, `test:
+  TestTheContractsRulesSayWhenTheyAreOff`)*
 - **INV-019** — The areas a design defines and the spines on disk are the same set: every
   area has a spine that reads, and every document under `design/spines/` is the spine of
   an area. A source file is under one area at most; a file under none is the design's
@@ -1023,6 +1043,15 @@ design, and a branch of the contracts repository is a proposal. So a server is n
 held to something that may not land, and a definition and its server can be built in
 either order.
 
+The rules bind where the root's map names a contracts repository, and the map can fail
+to: the kind is a word a person types. A project with definitions, `servers` blocks and
+`serves:` in its designs, whose map calls that repository something else, has every
+rule off and a checker that passes. So the checker says when the rules are off and the
+signs of a contracts repository are there. It says it in a line and refuses nothing,
+because the signs are evidence and not proof: a repository may hold `.proto` files for
+another reason, and a check that is sometimes wrong is switched off (ADR-0002). One
+part needs no map at all and is held everywhere: a test `serves:` names exists.
+
 #### Alternatives rejected
 
 - **A registry of who serves what, kept at the root.** A third place to keep in step
@@ -1031,6 +1060,12 @@ either order.
   check to one format and puts a deployment fact into an interface.
 - **Bind the server from the note alone**, before the definition merges. A server would
   be refused for a field that does not exist yet and might never.
+- **Refuse when the signs are there and the map gives no repository the kind.** A
+  root that keeps `.proto` files for something other than its services' interfaces
+  could not pass without mislabelling a repository.
+- **Find the contracts repository by its name or its files when no entry has the
+  kind.** The map would then say one thing and the checker do another; the kind is the
+  one switch, and the line says to set it.
 - **Skip the check when the contracts repository is not on disk.** In CI that is every
   run of a workflow someone forgot to extend, and a check that is silently skipped is
   believed.
@@ -1184,7 +1219,7 @@ No machine holds a design to it yet.
 | `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files. |
 | `harness/internal/session/` | Starts a model session through the `claude` tool with exactly the tools it is given; reads a settings file. |
 | `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007); `branch.go`, how a change branch is named here (ADR-0006). |
-| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. |
+| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files, the two rules of ADR-0010 and the line that says when they are off; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. |
 | `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
 | `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes; `where.go` what the `where` step works out for `bootstrap`: the rules file, and the runner the repository's workflows run on. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
@@ -1233,6 +1268,8 @@ Paths a fault would travel, and the test that walks each:
 - a new definition no note lists with a server on the map is refused — `TestANewDefinitionIsListedWithItsServer`
 - a merged definition whose server names no test is refused there, and so is a contracts repository that cannot be read — `TestAListedDefinitionIsRefusedUntilItsServerNamesATest`
 - a definition that has not merged binds no server — `TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges`
+- the contracts rules are off for want of a kind on the map, and the checker says OK and no more — `TestTheContractsRulesSayWhenTheyAreOff`
+- a test `serves:` names does not exist, and passes because no contracts repository was found — `TestATestServesNamesExistsWhateverTheMapSays`
 - a change branch that passes is pushed, and main does not move — `TestAChangeBranchThatPassesIsPushed`
 - work on main or a stray branch is moved to a change branch before it is pushed — `TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`
 - new work on a branch whose pull request has landed is moved to a branch of its own — `TestABranchAlreadyMergedIsNotPushedToAgain`

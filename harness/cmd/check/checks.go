@@ -20,6 +20,9 @@ const Unfinished = design.Unfinished
 // Result is what a run found.
 type Result struct {
 	Failures []string
+	// Notices are things a person should know that refuse nothing: each is
+	// printed with the summary, whatever the outcome.
+	Notices  []string
 	Claimed  int
 	InSpines int // of Claimed, those an area holds
 	Orphans  []string
@@ -53,6 +56,9 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 			fmt.Fprintf(w, "harness: %s still says %s in %d place(s)\n", sp.Path, Unfinished, n)
 		}
 	}
+	for _, n := range r.Notices {
+		fmt.Fprintf(w, "harness: %s\n", n)
+	}
 	if r.failed() {
 		fmt.Fprintln(w, "harness: FAILED. Two fixes: amend the design, or change the code.")
 	} else {
@@ -74,7 +80,11 @@ func runChecks(repo *design.Repo) *Result {
 	checkTests(repo, res)
 	checkMap(repo, res)
 	checkIDs(repo, parent, res)
-	checkContracts(repo, LocateEnv(parent), res)
+	env := LocateEnv(parent)
+	checkContracts(repo, env, res)
+	if n := contractsOff(repo, parent, env); n != "" {
+		res.Notices = append(res.Notices, n)
+	}
 	if notes, err := readNotes(repo.Root); err != nil {
 		res.fail("%s: %v", ChangesDir, err)
 	} else {

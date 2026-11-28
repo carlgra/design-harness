@@ -207,6 +207,12 @@ A repository with no `spines:` is one document, and nothing above applies to it.
 Then it runs `validate:`. There are always two fixes: amend the design, or change the
 code.
 
+It also says two things without refusing: how many places a design still says
+`TODO(design)`, and, under a root, that the contracts rules are off when no entry of
+the root's map has `kind: contracts` and a design has `serves:`, a note has a `servers`
+block, or a listed repository holds `.proto` files. A test that `serves:` names must
+exist either way.
+
 That is all. It does not judge whether the design is good, whether a decision's reason
 holds, or whether a test proves what its name says. Those are read by a person at review,
 with a cold read's help. A small check that is always right is trusted; a large one that

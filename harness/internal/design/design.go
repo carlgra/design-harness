@@ -155,8 +155,9 @@ type Served struct {
 type RepoEntry struct {
 	// Path is where it is checked out, relative to the root.
 	Path string `yaml:"path"`
-	// Kind says what it is, in the root's own words: service, contracts,
-	// platform. Nothing in the harness gives a kind meaning yet.
+	// Kind says what it is, in the root's own words: service, platform. The
+	// harness gives meaning to one, contracts: the repository that holds the
+	// definitions the others talk through.
 	Kind string `yaml:"kind"`
 	// Remote is where it is cloned from. Empty means it is local only.
 	Remote string `yaml:"remote"`

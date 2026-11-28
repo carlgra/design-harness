@@ -256,7 +256,9 @@ func onMap(repos []design.RepoEntry, name string) bool {
 // any other repository under the same root, every name the contracts
 // repository has merged naming this one as server has a test in its design.
 // At a root, and in a repository under no root or under one that keeps no
-// contracts repository, nothing.
+// contracts repository, neither. In every repository, whatever its role or
+// none, a test that serves: names exists: that needs no contracts repository
+// to be found.
 func checkContracts(repo *design.Repo, env *Env, res *Result) {
 	switch env.Role {
 	case "contracts":
@@ -264,6 +266,102 @@ func checkContracts(repo *design.Repo, env *Env, res *Result) {
 	case "server":
 		checkServed(repo, env, res)
 	}
+	checkServesTests(repo, res)
+}
+
+// checkServesTests: every test serves: names is in a test file the design
+// accounts for.
+func checkServesTests(repo *design.Repo, res *Result) {
+	if len(repo.Design.Serves) == 0 {
+		return
+	}
+	tests := testFiles(repo)
+	for _, s := range repo.Design.Serves {
+		if strings.TrimSpace(s.Test) == "" {
+			continue // refused by checkServed where contracts lists it
+		}
+		if !definedIn(repo.Root, tests, s.Test) {
+			res.fail("design/DESIGN.md serves: %s with the test %s, which is in no test file it accounts for", s.Name, s.Test)
+		}
+	}
+}
+
+// contractsOff says, in one line, that the contracts rules bind nothing here
+// though the signs of a contracts repository are there, or "" when there is
+// nothing to say. The rules are switched on by one thing, a map entry of
+// kind contracts; a root that lists its repository of definitions under
+// another kind has every one of them off, and a checker that then says OK and
+// no more is believed. The signs are a serves: key in a design, a servers
+// block in a note, and .proto files a person wrote: looked for in this
+// repository when it is nested, and in each repository on the map when it is
+// the root. It is a line and not a refusal, because the signs are evidence
+// and not proof. A map that lists a contracts repository as planned has said
+// that the rules are off, and is told nothing.
+func contractsOff(repo *design.Repo, parent *design.Parent, env *Env) string {
+	if env.Role != "" {
+		return ""
+	}
+	entries, theMap := repo.Design.Repos, design.DocPath+" repos:"
+	if parent != nil {
+		entries, theMap = parent.Design.Repos, fmt.Sprintf("the map of %s, the root", parent.Name)
+	}
+	if parent == nil && len(entries) == 0 {
+		return ""
+	}
+	for _, e := range entries {
+		if strings.EqualFold(e.Kind, ContractsKind) {
+			return ""
+		}
+	}
+	var signs []string
+	if parent != nil {
+		signs = contractsSigns(repo, "this repository", "this design")
+	} else {
+		for _, e := range entries {
+			p := strings.Trim(e.Path, "/")
+			dir := filepath.Join(repo.Root, filepath.FromSlash(p))
+			if e.Status == "planned" || !design.IsDir(dir) {
+				continue
+			}
+			nested, err := design.Walk(dir)
+			if err != nil {
+				continue
+			}
+			if fm, err := design.ReadFrontmatterFile(filepath.Join(dir, filepath.FromSlash(design.DocPath))); err == nil {
+				_ = yaml.Unmarshal([]byte(fm.YAML), &nested.Design)
+			}
+			signs = append(signs, contractsSigns(nested, p, p+"'s design")...)
+		}
+	}
+	if len(signs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("the contracts rules are off: %s, and %s gives no repository `kind: %s`. Give that kind to the repository that holds the definitions, and a new definition is held to naming its server and a server to naming its test",
+		strings.Join(signs, "; "), theMap, ContractsKind)
+}
+
+// contractsSigns are the signs in one repository that its root keeps
+// contracts: what it is called in the line, and what its design is.
+func contractsSigns(repo *design.Repo, name, itsDesign string) []string {
+	var signs []string
+	if len(repo.Design.Serves) > 0 {
+		signs = append(signs, itsDesign+" has serves:")
+	}
+	if notes, err := readNotes(repo.Root); err == nil {
+		for _, n := range notes {
+			if _, found, _ := ParseServers(n); found {
+				signs = append(signs, fmt.Sprintf("a note in %s carries a servers block (%s)", name, n.Path))
+				break
+			}
+		}
+	}
+	for _, f := range repo.Files {
+		if isProto(f) {
+			signs = append(signs, name+" holds .proto files")
+			break
+		}
+	}
+	return signs
 }
 
 // checkListed is the contracts half. Its notes, from the date its frontmatter
@@ -347,8 +445,9 @@ func validEntry(e Entry, repos []design.RepoEntry, res *Result) {
 // checkServed is the serving half. Every entry the contracts repository has
 // merged naming this repository as server, whose name a merged definition
 // declares, is under the design's serves: with a test, and every test serves:
-// names exists in a test file the design accounts for. A serves: item
-// contracts does not list is not refused, but its test must still exist.
+// names exists in a test file the design accounts for, which checkServesTests
+// holds in every repository. A serves: item contracts does not list is not
+// refused, but its test must still exist.
 func checkServed(repo *design.Repo, env *Env, res *Result) {
 	if !design.IsDir(env.ContractsDir) {
 		res.fail("the contracts repository is not checked out at %s, so what this repository must serve cannot be read: run sync at the root, or check it out there in CI", env.ContractsDir)
@@ -385,15 +484,6 @@ func checkServed(repo *design.Repo, env *Env, res *Result) {
 				res.fail("%s: contracts (%s, at %s) says %s serves it, called by %s, and design/DESIGN.md serves: names no test for it",
 					e.Name, e.Note, tree.At, env.Self, strings.Join(e.Callers, ", "))
 			}
-		}
-	}
-	tests := testFiles(repo)
-	for _, s := range repo.Design.Serves {
-		if strings.TrimSpace(s.Test) == "" {
-			continue // refused above if contracts lists it
-		}
-		if !definedIn(repo.Root, tests, s.Test) {
-			res.fail("design/DESIGN.md serves: %s with the test %s, which is in no test file it accounts for", s.Name, s.Test)
 		}
 	}
 }
