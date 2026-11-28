@@ -358,3 +358,74 @@ func TestAPushIsRefusedWhileTheServersProtectionLacksSomething(t *testing.T) {
 		t.Fatalf("a repository that has not asked had its protection read: %v\n%s", err, out)
 	}
 }
+
+// Where the design's frontmatter says how a change branch is named, a branch
+// named so is pushed as it is, and feat/ is no longer one. Work that must
+// move goes to a name the script can build that matches; where the pattern
+// asks for something it cannot know, a ticket number, it refuses, says what
+// name is needed, and moves and pushes nothing.
+func TestABranchIsNamedAsTheDesignAsksAndStrayWorkIsMovedOnlyToSuchAName(t *testing.T) {
+	const tickets = "branches: '[A-Z]+-[0-9]+/.+'\n"
+
+	t.Run("a branch named as the design asks is pushed", func(t *testing.T) {
+		p := newProject(t, tickets)
+		p.git("checkout", "-q", "-b", "SHOP-12/a-fourth-line")
+		p.commit("feat: a fourth line", "one\ntwo\nthree\nfour\n")
+		if out, err := p.push(); err != nil {
+			t.Fatalf("the push failed: %v\n%s", err, out)
+		}
+		if got := p.branches(); got != "SHOP-12/a-fourth-line main" {
+			t.Errorf("the remote has %q", got)
+		}
+	})
+
+	t.Run("no name can be built, so nothing is moved", func(t *testing.T) {
+		for _, from := range []string{"main", "feat/a-fourth-line"} {
+			p := newProject(t, tickets)
+			if from != "main" {
+				p.git("checkout", "-q", "-b", from)
+			}
+			p.commit("feat: a fourth line", "one\ntwo\nthree\nfour\n")
+			tip := p.git("rev-parse", "HEAD")
+			p.refused("safe-push cannot name a branch for this work")
+			out, _ := p.push()
+			for _, want := range []string{"[A-Z]+-[0-9]+/.+", "design/DESIGN.md, branches:", "git switch -c"} {
+				if !strings.Contains(out, want) {
+					t.Errorf("from %s, the refusal does not say %q:\n%s", from, want, out)
+				}
+			}
+			if got := p.git("rev-parse", "--abbrev-ref", "HEAD"); got != from || p.git("rev-parse", "HEAD") != tip {
+				t.Errorf("from %s, the work was moved: on %q", from, got)
+			}
+			if got := p.git("branch", "--format=%(refname:short)"); strings.Contains(got, "a-fourth-line") && from == "main" {
+				t.Errorf("a branch was made that could not be pushed: %q", got)
+			}
+		}
+	})
+
+	t.Run("a name that matches is built where one can be", func(t *testing.T) {
+		cases := []struct{ pattern, want string }{
+			{"(feat|fix|chore)/[a-z0-9-]+", "feat/a-fourth-line"},
+			{"[a-z0-9-]+", "a-fourth-line"},
+		}
+		for _, c := range cases {
+			p := newProject(t, "branches: '"+c.pattern+"'\n")
+			main := p.remoteMain()
+			p.commit("feat: a fourth line", "one\ntwo\nthree\nfour\n")
+			out, err := p.push()
+			if err != nil {
+				t.Fatalf("%s: the push failed: %v\n%s", c.pattern, err, out)
+			}
+			if got := p.branches(); got != c.want+" main" || p.remoteMain() != main {
+				t.Errorf("%s: the remote has %q, want %q beside main\n%s", c.pattern, got, c.want, out)
+			}
+		}
+	})
+
+	t.Run("a pattern that is not one pushes nothing", func(t *testing.T) {
+		p := newProject(t, "branches: '(feat'\n")
+		p.git("checkout", "-q", "-b", "feat/a-fourth-line")
+		p.commit("feat: a fourth line", "one\ntwo\nthree\nfour\n")
+		p.refused("is not a regular expression")
+	})
+}

@@ -111,6 +111,7 @@ tests:                 # tests that must exist, by name
   - TestAnEmptyCartIsRefused
 validate: make test    # the repository's own gate, run after the checks pass (optional)
 commits: conventional  # a commit's subject is a Conventional Commit (optional)
+branches: '[A-Z]+-[0-9]+/.+'  # how a change branch is named, if not feat/ or fix/ (optional)
 protection: required   # the server's protection of main is read before every push (optional)
 notes:                 # what a note under design/changes/ carries
   from: 2026-01-31     #   notes dated before this are never reread
@@ -122,6 +123,11 @@ notes:                 # what a note under design/changes/ carries
 root need no entry, and nothing under `design/` does. What git ignores is not looked at.
 A repository asks more of its notes by adding a heading to `sections:`, for instance
 `What existing data changes meaning` where a change can alter what stored data means.
+`branches:` is a regular expression, and a change branch's whole name must match it: the
+one above accepts `SHOP-12/a-fourth-line` and refuses `feat/a-fourth-line`. `safe-push`
+pushes a branch named so and no other. Work it finds on `main` or a stray branch it moves
+to a name it can build that matches, and where it can build none it stops and says what
+to type.
 
 ## Spines: a large repository, one area at a time
 
@@ -211,7 +217,8 @@ is sometimes wrong is switched off.
 2. **Write the note.** `design/changes/<date>-<slug>.md`, from
    `harness/templates/change.md`: the problem, the plan, the alternatives rejected, and
    the files to change and why. Short. It is kept.
-3. **Branch.** `feat/<what>` or `fix/<what>`. Never commit on `main`.
+3. **Branch.** `feat/<what>` or `fix/<what>`, or as the frontmatter's `branches:` says.
+   Never commit on `main`.
 4. **Make the design say what will be true**, then make the code agree with it. A new file
    goes under a glob in `files:`. A new rule gets an invariant and the test that proves
    it, named in `tests:`.
@@ -362,6 +369,7 @@ go -C harness run ./cmd/coldread -only comprehension
 go -C harness run ./cmd/reverse survey          # what a machine can see
 go -C harness run ./cmd/reverse draft           # draft the design from the code
 go -C harness run ./cmd/subject "fix: ..."       # is this subject a Conventional Commit
+go -C harness run ./cmd/branch feat/a-thing      # is this name a change branch's here
 harness/safe-push                                # check, push, open the pull request
 harness/safe-push --no-pr                        # push only
 harness/safe-push --tag v1.2.0                   # tag main's tip, as merged

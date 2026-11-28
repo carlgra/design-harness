@@ -47,6 +47,8 @@ tests:
   - TestABranchThatDoesNotMergeCleanlyIsRefused
   - TestABranchTheCheckerRefusesIsNotPushed
   - TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks
+  - TestABranchIsNamedAsTheDesignAsksAndStrayWorkIsMovedOnlyToSuchAName
+  - TestAChangeBranchIsNamedAsTheDesignAsksOrFeatOrFix
   - TestTheProtoScanFindsRPCsAndRequestFields
   - TestTheServersBlockIsReadFromItsFence
   - TestARepositorysRoleIsReadFromTheRootsMap
@@ -123,7 +125,8 @@ Two things carry the method.
 forgotten. It has a body, read by people and by model sessions, and YAML frontmatter,
 read by a machine. The frontmatter says which paths hold the code (`files:`),
 which tests must exist (`tests:`), the repository's own gate (`validate:`), whether a
-commit's subject is a Conventional Commit (`commits:`), whether the server's protection
+commit's subject is a Conventional Commit (`commits:`), how a change branch is named
+where that is not `feat/` or `fix/` (`branches:`), whether the server's protection
 of the default branch is read before a push (`protection:`), and what a change note
 must carry (`notes:`). Six files at a repository's root need no entry in `files:`, because
 they are how a repository works rather than its code: `README.md`, `CLAUDE.md`,
@@ -238,6 +241,17 @@ The parts, all under `harness/`:
   file, the runner the tests replace.
 - `cmd/subject` and `internal/convention` say whether a subject is a Conventional
   Commit, in a repository whose frontmatter asks for them.
+- `cmd/branch` and `internal/convention` say whether a name is a change branch's. With
+  no `branches:` in the frontmatter that is `feat/` or `fix/` and at least one
+  character more. With `branches:`, a regular expression in Go's syntax, it is a name
+  the whole of which matches the expression, and `feat/` is one only if the expression
+  says so. `branch NAME` exits zero for a change branch's name and non-zero otherwise;
+  `branch -form` prints what a change branch is called, for a message. An expression
+  that does not compile is an error from this command and never read as no rule:
+  `safe-push` then pushes nothing. `main`, `master` and the remote's default branch are
+  never change branches, whatever the expression. Under a root each repository's
+  `branches:` is its own: it is not one of the rules a nested repository takes from the
+  root's frontmatter.
 - `cmd/protection` reads how the server protects the default branch, in a repository
   whose frontmatter says `protection: required` (ADR-0011), and passes without reading
   anything in one that does not. It needs three things of the branch: that a pull
@@ -303,12 +317,17 @@ The parts, all under `harness/`:
   itself: `protection:` is not one of the rules a nested repository takes from the
   root's frontmatter, because it is a fact about one repository's server settings.
 - `safe-push` is the one way a branch is pushed. It never pushes `main`, or a branch
-  not named `feat/` or `fix/`: work it finds on one is moved, commits and uncommitted
+  that is not a change branch, as `cmd/branch` judges it: work it finds on one is moved, commits and uncommitted
   changes both, to a new branch, and that is what is pushed. The new branch is named
   `feat/` or `fix/` and then a slug of the first commit's subject, which is also the
   pull request's title: the subject without its Conventional Commit type, whole when it
   is short and cut at a word when it is long. It is `fix/` when the subject opens with
-  `fix`, or with Fix, Correct, Repair or Revert, and `feat/` otherwise. A branch whose remote is already merged
+  `fix`, or with Fix, Correct, Repair or Revert, and `feat/` otherwise. Where the
+  design sets `branches:` and that name does not match, the slug alone is tried, for a
+  pattern with no prefix. Where neither matches, the pattern asks for something the
+  script cannot know, a ticket number or a person's name: it refuses before anything is
+  stashed or moved, gives the pattern, and says to start a branch with
+  `git switch -c`. A branch whose remote is already merged
   into the default branch is treated the same way: new work on it is moved. It requires a clean tree; checks the branch merges cleanly into
   the remote's default branch; runs `go vet` over the harness itself and then the
   checker, which runs the repository's gate; checks the title; runs `cmd/protection`,
@@ -577,7 +596,9 @@ root needs is named in the workflow's comment and set by a person. A root is boo
 - **INV-011** — Nothing reaches `main` except through a pull request that passed the
   checker. *(`harness/hooks/pre-push` and `harness/safe-push` refuse the push, `test:
   TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`, `test:
-  TestABranchTheCheckerRefusesIsNotPushed`; where the frontmatter asks, the server's
+  TestABranchTheCheckerRefusesIsNotPushed`; whatever pattern the design gives for a
+  change branch, `main` is not one, `test:
+  TestABranchIsNamedAsTheDesignAsksAndStrayWorkIsMovedOnlyToSuchAName`; where the frontmatter asks, the server's
   protection is read before every push, `test:
   TestAPushIsRefusedWhileTheServersProtectionLacksSomething`)*
 - **INV-012** — Nothing under `harness/` needs anything outside it, or names a
@@ -665,7 +686,8 @@ that due. None is accepted as final.
 
 A change starts with a note under `design/changes/<date>-<slug>.md`: the
 problem, the plan, the alternatives rejected, and the files to change and why.
-Work happens on a `feat/` or `fix/` branch, never on `main`. `harness/safe-push`
+Work happens on a `feat/` or `fix/` branch, never on `main`; a repository that names
+its branches otherwise says how in its frontmatter, with `branches:`. `harness/safe-push`
 runs the checker and the repository's own gate, pushes the branch and opens the
 pull request; CI runs the checker again, and `main` is protected behind it. A
 person merges. The change ends with this document saying what is now true.
@@ -840,14 +862,23 @@ does not guess; it keeps the template's runner and says the line is one to check
 
 ### ADR-0006 — Nothing reaches main except through a pull request, and there is one door
 
-Work is pushed with `harness/safe-push`, which never pushes `main` or any branch not
-named `feat/` or `fix/`, moving work found on one to a branch of its own; runs the
-checker, and with it the repository's gate, as CI will; and opens the pull request. The `pre-push` hook refuses a push to `main` however it is issued and runs the
+Work is pushed with `harness/safe-push`, which never pushes `main` or any branch that
+is not a change branch, moving work found on one to a branch of its own; runs the
+checker, and with it the repository's gate, as CI will; and opens the pull request. A
+change branch is named `feat/` or `fix/`, unless the design's frontmatter gives a
+pattern under `branches:`, and then it is a name that matches the pattern. The `pre-push` hook refuses a push to `main` however it is issued and runs the
 checker. A person merges. `hooks/install` refuses to replace hooks a repository already
 uses, and says how to call these from them.
 
 One door because an agent that is told "never push to main" forgets, and one that can
 only push through a script that refuses does not need to remember.
+
+The name is checked because a branch someone else named, the one a cloud session is
+handed, is not named for the change and outlives it. What the name must be is the
+repository's to say: a team that puts a ticket number or a person's name first has
+tools and habits that read it, and a door that refuses its names is a door it will not
+use. The pattern is a value in the design's frontmatter, so that what the door accepts
+is written where the repository's other rules are.
 
 #### Alternatives rejected
 
@@ -857,6 +888,13 @@ only push through a script that refuses does not need to remember.
   a hook people disable.
 - **Install the hooks over whatever is there.** `core.hooksPath` switches off every
   hook outside it without a word.
+- **`feat/` and `fix/` for every repository.** A repository with a naming rule of its
+  own would have every branch moved to a name its own tools do not read.
+- **A list of prefixes in place of a pattern.** It cannot say "a ticket number first".
+- **Any name but `main`.** The branch a session was handed, reused for change after
+  change, is the case the check exists for.
+- **Move stray work to `feat/` or `fix/` whatever the pattern.** The script would make
+  a branch it then refuses to push.
 
 ### ADR-0007 — The commit convention is asked for by the design, repository by repository
 
@@ -1110,11 +1148,12 @@ No machine holds a design to it yet.
 | `harness/go.mod`, `harness/go.sum` | The harness's own module, `harness`, with one dependency (ADR-0005). |
 | `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files. |
 | `harness/internal/session/` | Starts a model session through the `claude` tool with exactly the tools it is given; reads a settings file. |
-| `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007). |
+| `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007); `branch.go`, how a change branch is named here (ADR-0006). |
 | `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. |
 | `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
 | `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes; `where.go` what the `where` step works out for `bootstrap`: the rules file, and the runner the repository's workflows run on. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
+| `harness/cmd/branch/` | The command the push script calls to ask whether a name is a change branch's (ADR-0006). |
 | `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the frontmatter's `protection:`, the `gh` tool and what is printed. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
 | `harness/coldread/` | `comprehension.md` and `readiness.md`, the two prompts; `coldread.yaml`, the model and the verdict prefix. |
@@ -1165,6 +1204,8 @@ Paths a fault would travel, and the test that walks each:
 - a branch that conflicts with main is refused, with the file named — `TestABranchThatDoesNotMergeCleanlyIsRefused`
 - a branch the checker refuses is not pushed — `TestABranchTheCheckerRefusesIsNotPushed`
 - a title that is not conventional is refused where the design asks for them — `TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks`
+- a branch named as the design asks is moved, or stray work is moved to a name the script then refuses — `TestABranchIsNamedAsTheDesignAsksAndStrayWorkIsMovedOnlyToSuchAName`
+- a name that matches part of the pattern passes, or a pattern that does not compile is read as no rule — `TestAChangeBranchIsNamedAsTheDesignAsksOrFeatOrFix`
 - a branch's protection that lacks a pull request, the check or the refusal of a force push is named for each, whichever of the two places holds them — `TestAProtectionThatLacksSomethingIsNamedForIt`
 - a protection the server does not show, or a server that cannot be asked, is not read as a branch with none — `TestAProtectionThatCannotBeReadIsNotTakenForNone`
 - setting sends back what was there with what was lacking added, and writes over nothing it could not read whole — `TestSettingAddsWhatIsLackingAndChangesNothingElse`

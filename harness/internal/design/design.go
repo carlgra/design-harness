@@ -37,6 +37,10 @@ type Design struct {
 	// Commits is the convention a commit's subject follows here; the only
 	// one is "conventional". Empty binds nothing.
 	Commits string `yaml:"commits"`
+	// Branches is a regular expression the whole of a change branch's name
+	// must match for safe-push to push it. Empty is feat/<what> or
+	// fix/<what>.
+	Branches string `yaml:"branches"`
 	// Protection asks for the server's protection of the default branch to
 	// be read before every push; the only value is "required". Empty reads
 	// nothing.

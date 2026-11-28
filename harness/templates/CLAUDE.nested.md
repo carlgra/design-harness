@@ -32,8 +32,9 @@ decision there applies here unchanged. The method is in `{{HARNESS}}/FRAMEWORK.m
    it, and the repository that serves one names a test for it under `serves:` in its
    design. The checker refuses either half that is missing.
 5. **Never commit on `main`, and never run `git push`.** Branch first, `feat/<what>` or
-   `fix/<what>`, and push with `{{HARNESS}}/safe-push`, from here, which runs the checker
-   and opens the pull request. A person merges.
+   `fix/<what>`, or as `branches:` in this design's frontmatter says where it is set, and
+   push with `{{HARNESS}}/safe-push`, from here, which runs the checker and opens the
+   pull request. A person merges.
 6. **A new decision is recorded; a change within the decisions in force is not one.** Add
    or amend a decision in `design/DESIGN.md` only when something is newly decided, reversed
    or renamed. Tuning a value a decision already constrains is code. Only what

@@ -147,6 +147,7 @@ harness/             everything that is copied into a project
   cmd/coldread       two sessions with no memory read the design, or one area's spine with it: comprehension, readiness
   cmd/reverse        reverse-engineer the design of existing code, whole or one area at a time: survey, skeleton, draft
   cmd/subject        is a commit's subject a Conventional Commit (optional, per repository)
+  cmd/branch         is a name a change branch's: feat/ or fix/, or the pattern the design gives
   cmd/sync           at a root: clone and fetch the repositories its design lists
   safe-push          the one way a branch is pushed: check, push, open the pull request
   hooks/             pre-push and commit-msg, and their installer
