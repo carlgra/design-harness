@@ -24,6 +24,9 @@ type RuleLine struct {
 	Known int // entries on the list
 	Fresh []rules.Finding
 	Gone  []string // on the list and no longer found
+	// Moved is the number of listed breaches found under another file: the
+	// same breaches, after a rename or a move.
+	Moved int
 	// Was is the length of the list where this change branched off, and
 	// Grown the entries added to it since; Based is whether that could be
 	// read at all, and Adopted whether there was no list there: the rule's
@@ -94,7 +97,10 @@ func checkRules(repo *design.Repo, today time.Time, res *Result) {
 			res.fail("%s: %v", first.KnownPath(), err)
 		}
 		line.Found, line.Known = len(all), len(known)
-		line.Fresh, line.Gone = rules.Split(all, known)
+		fresh, gone := rules.Split(all, known)
+		var moved []string
+		moved, line.Fresh, line.Gone = rules.Moved(fresh, gone)
+		line.Moved = len(moved)
 		if was, there, ok := knownAt(repo.Root, base, first.KnownPath()); ok {
 			line.Based, line.Was, line.Adopted = true, len(was), !there
 			if there {
@@ -119,6 +125,9 @@ func checkRules(repo *design.Repo, today time.Time, res *Result) {
 			}
 			if n := len(line.Fresh); n > 0 && !warns && len(known) == 0 {
 				res.fail("%s: %d breach(es) and no list of known ones. To adopt the rule with these allowed and every new one refused: go -C harness run ./cmd/check -known %s", name, n, name)
+			}
+			if line.Moved > 0 {
+				res.fail("%s: %d known breach(es) are now in another file. They are the same breaches: follow them with go -C harness run ./cmd/check -known", name, line.Moved)
 			}
 			if n := len(line.Gone); n > 0 {
 				res.fail("%s: %d breach(es) on %s are mended. Take them off, so that they cannot come back: go -C harness run ./cmd/check -known", name, n, first.KnownPath())
@@ -186,12 +195,16 @@ func recordKnown(repo *design.Repo, names []string, w io.Writer) error {
 			continue
 		}
 		fresh, gone := rules.Split(all, known)
+		moved, fresh, mended := rules.Moved(fresh, gone)
 		if len(gone) > 0 {
-			if err := rules.WriteKnown(repo.Root, first, rules.Minus(known, gone)); err != nil {
+			if err := rules.WriteKnown(repo.Root, first, append(rules.Minus(known, gone), moved...)); err != nil {
 				return err
 			}
 		}
-		fmt.Fprintf(w, "harness: %s: %d mended breach(es) taken off %s, %d left\n", name, len(gone), first.KnownPath(), len(known)-len(gone))
+		if len(moved) > 0 {
+			fmt.Fprintf(w, "harness: %s: %d breach(es) followed to the file they moved to\n", name, len(moved))
+		}
+		fmt.Fprintf(w, "harness: %s: %d mended breach(es) taken off %s, %d left\n", name, len(mended), first.KnownPath(), len(known)-len(mended))
 		if len(fresh) > 0 {
 			fmt.Fprintf(w, "harness: %s: %d new breach(es) are not added: mend them. To adopt the rule afresh, delete the list and run this again\n", name, len(fresh))
 		}

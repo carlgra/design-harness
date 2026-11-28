@@ -233,7 +233,9 @@ go -C harness run ./cmd/check -known INV-002
 writes `design/rules/INV-002.known`, one breach to a line. From then on the checker
 allows those and refuses every other. The list only shrinks: when a breach is mended
 the checker refuses until it is taken off the list, with `check -known` again, and
-`check -known` never adds one. So the rule holds for every new line from the first day,
+`check -known` never adds one. A listed breach whose file is renamed, or whose line is
+moved to another file, is the same breach: the checker says it moved, and `check -known`
+follows it. So the rule holds for every new line from the first day,
 and the old breaches are a list that is worked down and cannot grow back.
 
 **Warn first, if you like.** `from: 2027-01-01` on a check makes it report until that

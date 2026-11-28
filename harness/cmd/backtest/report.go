@@ -21,6 +21,18 @@ type Report struct {
 	Detail bool
 }
 
+// refusedByAny is the number of changes at least one rule would have
+// refused.
+func (r Report) refusedByAny() int {
+	seen := map[string]bool{}
+	for _, t := range r.Rules {
+		for _, ref := range t.Refused {
+			seen[ref.Commit.Hash] = true
+		}
+	}
+	return len(seen)
+}
+
 // few is how many of anything are listed where not everything is.
 const few = 5
 
@@ -60,6 +72,10 @@ func (r Report) Text() string {
 	if a := r.Areas; a != nil {
 		b.WriteString("\n")
 		b.WriteString(a.text())
+	}
+	if n := r.refusedByAny(); len(r.Rules) > 1 {
+		fmt.Fprintf(&b, "\nrules: %s with a check; together they would have refused %d of %s (%s)\n",
+			plural(len(r.Rules), "rule", "rules"), n, plural(len(r.Commits), "change", "changes"), pct(n, len(r.Commits)))
 	}
 	for _, t := range r.Rules {
 		b.WriteString("\n")

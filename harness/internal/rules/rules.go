@@ -413,3 +413,41 @@ func Minus(a, b []string) []string {
 	}
 	return out
 }
+
+// textOf is what was found, from a key: the key without its file.
+func textOf(key string) string {
+	if i := strings.Index(key, ": "); i >= 0 {
+		return key[i+2:]
+	}
+	return key
+}
+
+// Moved finds, among the breaches not on a list and the entries of the list
+// not found, those that are one breach in a new place: the same text under
+// another file, as when a file is renamed or code is moved. Such a breach is
+// neither new nor mended. It returns the keys the moved breaches now have,
+// the breaches that are new, and the entries that are mended.
+func Moved(fresh []Finding, gone []string) (moved []string, stillFresh []Finding, stillGone []string) {
+	left := map[string]int{}
+	for _, k := range gone {
+		left[textOf(k)]++
+	}
+	took := map[string]int{}
+	for _, f := range fresh {
+		if left[f.Text] > 0 {
+			left[f.Text]--
+			took[f.Text]++
+			moved = append(moved, f.Key())
+			continue
+		}
+		stillFresh = append(stillFresh, f)
+	}
+	for _, k := range gone {
+		if took[textOf(k)] > 0 {
+			took[textOf(k)]--
+			continue
+		}
+		stillGone = append(stillGone, k)
+	}
+	return moved, stillFresh, stillGone
+}

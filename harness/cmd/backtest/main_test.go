@@ -107,6 +107,10 @@ func shopPast(t *testing.T) *past {
 		"src/billing/charge.ts": "export const charge = 2\n",
 	})
 	p.change("refactor(cart): move a line", map[string]string{"src/cart/add.ts": "// charge\n// moved\nimport { charge } from \"../billing/charge\"\nexport const add = 1\n"})
+	p.change("refactor(cart): the charge moves to a file of its own", map[string]string{
+		"src/cart/add.ts":    "export const add = 1\n",
+		"src/cart/charge.ts": "import { charge } from \"../billing/charge\"\n",
+	})
 	p.change("fix(search): no rate", map[string]string{"src/search/find.ts": "export const find = 1\n"})
 	p.change("docs: the design", map[string]string{"design/DESIGN.md": pastHead + "\nMore.\n"})
 	p.change("chore: tools and cart", map[string]string{"tools/lint.sh": "false\n", "src/cart/total.ts": "export const total = 2\n"})
@@ -126,8 +130,8 @@ func TestAChangeThatAddsABreachWouldHaveBeenRefused(t *testing.T) {
 	}
 	tr := trials[0]
 	// The first change brought one breach in with the tree, the charge from
-	// the cart brought another, moving a line brought none, and the fix to
-	// search mended the first.
+	// the cart brought another, moving a line brought none, moving it to
+	// another file brought none, and the fix to search mended the first.
 	if len(tr.Refused) != 2 || tr.Added != 2 || tr.Mended != 1 {
 		t.Fatalf("refused %d, added %d, mended %d", len(tr.Refused), tr.Added, tr.Mended)
 	}
@@ -137,11 +141,11 @@ func TestAChangeThatAddsABreachWouldHaveBeenRefused(t *testing.T) {
 	if f := tr.Refused[0].Added[0]; f.File != "src/cart/add.ts" || f.Line != 2 {
 		t.Fatalf("the breach is %+v", f)
 	}
-	if tr.Now != 1 || tr.Start() != 0 || tr.Reads != 3 {
+	if tr.Now != 1 || tr.Start() != 0 || tr.Reads != 4 {
 		t.Fatalf("now %d, start %d, reads %d", tr.Now, tr.Start(), tr.Reads)
 	}
 	text := Report{Repo: "shop", Commits: commits, Rules: trials}.Text()
-	for _, want := range []string{"would have refused 2 of 7 changes (29%)", "feat(cart): charge from the cart", "src/cart/add.ts:2:"} {
+	for _, want := range []string{"would have refused 2 of 8 changes (25%)", "feat(cart): charge from the cart", "src/cart/add.ts:2:"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the report lacks %q:\n%s", want, text)
 		}
@@ -181,14 +185,14 @@ func TestAreasAreScoredByTheChangesThatStayedInside(t *testing.T) {
 	p := shopPast(t)
 	repo, commits := p.load()
 	s := scoreAreas(repo, commits)
-	// Seven changes, one to documents only. Of the six to code: the first
-	// touched all three areas, the charge touched two, three stayed in one
+	// Eight changes, one to documents only. Of the seven to code: the first
+	// touched all three areas, the charge touched two, five stayed in one
 	// (one of them with a tool no area holds).
-	if s.Code != 6 || s.By != [4]int{0, 4, 1, 1} || s.Mixed != 1 {
+	if s.Code != 7 || s.By != [4]int{0, 5, 1, 1} || s.Mixed != 1 {
 		t.Fatalf("code %d, by %v, mixed %d", s.Code, s.By, s.Mixed)
 	}
 	cart := s.Areas[0]
-	if cart.Name != "cart" || cart.Changes != 5 || cart.Alone != 3 {
+	if cart.Name != "cart" || cart.Changes != 6 || cart.Alone != 4 {
 		t.Fatalf("cart: %+v", cart)
 	}
 	if len(s.Pairs) == 0 || s.Pairs[0].A != "billing" || s.Pairs[0].B != "cart" || s.Pairs[0].Together != 2 {
@@ -198,7 +202,7 @@ func TestAreasAreScoredByTheChangesThatStayedInside(t *testing.T) {
 		t.Fatalf("loose: %+v", s.Loose)
 	}
 	text := s.text()
-	if !strings.Contains(text, "67% of 6 changes to code stayed inside one area or none") {
+	if !strings.Contains(text, "71% of 7 changes to code stayed inside one area or none") {
 		t.Errorf("the score is not said:\n%s", text)
 	}
 

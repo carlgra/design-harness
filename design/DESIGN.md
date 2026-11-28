@@ -80,6 +80,7 @@ tests:
   - TestADocumentOverItsSizeIsSaidAndNotRefused
   - TestAReplacedDocumentStillThereIsNamed
   - TestTheReportCarriesEachRuleAndWhatItFound
+  - TestAKnownBreachIsFollowedWhenItsFileMoves
   - TestAChangeIsACommitAgainstItsFirstParent
   - TestAChangeThatAddsABreachWouldHaveBeenRefused
   - TestACommandRuleIsTriedInACheckoutOfEachChange
@@ -166,7 +167,9 @@ written by `check -known` to `design/rules/<id>.known`, an area's to
 `design/rules/<area>/<id>.known`. The checker allows a breach on the list and refuses
 any other. An entry of the list that is no longer found is refused too, until `check
 -known` takes it off, and `check -known` never adds to a list that exists: so a list
-only shrinks, and a breach once mended cannot return. A rule with `from:` a date
+only shrinks, and a breach once mended cannot return. A listed breach found under
+another file, the same text after a rename or a move, is neither new nor mended: the
+checker says it moved, and `check -known` follows it, so the list is no longer for it. A rule with `from:` a date
 reports what it finds as warnings before that day and refuses from it. Where the
 change's merge base with the default branch can be read, an entry added to an existing
 list since then is said as a warning for whoever merges. `check -report <file>` writes
@@ -692,8 +695,10 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   `test: TestABreachIsKnownByItsFileAndTextNotItsLine`)*
 - **INV-025** — A list of known breaches only shrinks by the checker's hand: an entry
   that is mended is refused until it is taken off, and recording never adds to a list
-  that exists. *(`test: TestAMendedBreachMustComeOffTheList`, `test:
-  TestRecordingNeverAddsABreachToAnExistingList`)*
+  that exists; a listed breach that moved to another file is followed, one for one.
+  *(`test: TestAMendedBreachMustComeOffTheList`, `test:
+  TestRecordingNeverAddsABreachToAnExistingList`, `test:
+  TestAKnownBreachIsFollowedWhenItsFileMoves`)*
 - **INV-026** — A command that fails and prints no breach could not be run, and is never
   taken for a clean tree. *(`test: TestACommandsLinesAreItsBreaches`)*
 - **INV-027** — A backtest changes nothing in the repository: it reads git's objects, and
@@ -1293,6 +1298,7 @@ Paths a fault would travel, and the test that walks each:
 - a rule before its day reports and does not refuse — `TestARuleOnlyWarnsBeforeItsDay`
 - a mended breach left on the list is refused until it is taken off — `TestAMendedBreachMustComeOffTheList`
 - recording over a list that exists adds nothing to it — `TestRecordingNeverAddsABreachToAnExistingList`
+- a listed breach whose file was renamed is followed, and is not taken for a new one — `TestAKnownBreachIsFollowedWhenItsFileMoves`
 - a check of an id the document does not define, or of no one kind, is refused — `TestACheckBelongsToARuleTheDocumentStates`
 - a spine's check reads no other area — `TestASpinesRuleReadsOnlyItsArea`
 - a file where the rule says none may be is refused — `TestNoFileMayBeWhereTheRuleSaysNone`

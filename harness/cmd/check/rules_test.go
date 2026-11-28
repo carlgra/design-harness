@@ -242,3 +242,31 @@ func TestTheReportCarriesEachRuleAndWhatItFound(t *testing.T) {
 		}
 	}
 }
+
+func TestAKnownBreachIsFollowedWhenItsFileMoves(t *testing.T) {
+	repo := spined(t, ruledHead, nil, map[string]string{"src/cart/add.ts": "import { charge } from \"../billing/charge\"\n"})
+	if err := recordKnown(repo, nil, &strings.Builder{}); err != nil {
+		t.Fatal(err)
+	}
+	os.Rename(filepath.Join(repo.Root, "src/cart/add.ts"), filepath.Join(repo.Root, "src/cart/put.ts"))
+	putFile(t, repo, "src/cart/extra.ts", "import { refund } from \"../billing/refund\"\n")
+	repo = reload(t, repo)
+	res := runChecksOn(repo, day("2026-01-01"))
+	if !strings.Contains(failures(res), "1 known breach(es) are now in another file") {
+		t.Fatalf("a moved breach was not told apart from a new one:\n%s", failures(res))
+	}
+	if !strings.Contains(failures(res), "src/cart/extra.ts:1:") || strings.Contains(failures(res), "INV-001: src/cart/put.ts") {
+		t.Fatalf("want only the breach that is new refused as new:\n%s", failures(res))
+	}
+	if err := recordKnown(repo, nil, &strings.Builder{}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(repo.Root, "design/rules/INV-001.known"))
+	if !strings.Contains(string(b), "src/cart/put.ts: ") || strings.Contains(string(b), "add.ts") || strings.Contains(string(b), "refund") {
+		t.Fatalf("the list did not follow the breach, or took the new one:\n%s", b)
+	}
+	res = runChecksOn(repo, day("2026-01-01"))
+	if len(res.Failures) != 1 || !strings.Contains(failures(res), "src/cart/extra.ts:1:") {
+		t.Fatalf("after following, only the new breach is refused:\n%s", failures(res))
+	}
+}

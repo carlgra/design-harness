@@ -88,6 +88,11 @@ func tryRules(repo *design.Repo, list []*rules.Rule, commits []history.Commit, r
 	}
 	defer blobs.Close()
 	for _, c := range commits {
+		// What was found before and after is set against each other across
+		// the whole change, so that a breach moved from one file to another
+		// is neither added nor mended, as the checker reads it.
+		wasAll := make([][]rules.Finding, len(list))
+		isAll := make([][]rules.Finding, len(list))
 		added := make([][]rules.Finding, len(list))
 		mended := make([]int, len(list))
 		for _, ch := range c.Changes {
@@ -118,10 +123,12 @@ func tryRules(repo *design.Repo, list []*rules.Rule, commits []history.Commit, r
 				if readsNew && after != nil {
 					is = r.Scan(ch.New, after)
 				}
-				a, m := brought(was, is)
-				added[i] = append(added[i], a...)
-				mended[i] += m
+				wasAll[i] = append(wasAll[i], was...)
+				isAll[i] = append(isAll[i], is...)
 			}
+		}
+		for i := range list {
+			added[i], mended[i] = brought(wasAll[i], isAll[i])
 		}
 		for i := range list {
 			trials[i].Added += len(added[i])
@@ -149,9 +156,9 @@ func patternsAnd(list []*rules.Rule, run bool) []*rules.Rule {
 	return out
 }
 
-// brought sets what a file held after a change against what it held before,
-// by what was found and not by where: a line that moved is the same breach,
-// and so is every breach of a file that was renamed.
+// brought sets what the files held after a change against what they held
+// before, by what was found and not by where: a line that moved is the same
+// breach, and so is every breach of a file that was renamed or split.
 func brought(was, is []rules.Finding) (added []rules.Finding, mended int) {
 	left := map[string]int{}
 	for _, f := range was {
@@ -250,8 +257,8 @@ func tryCommands(repo *design.Repo, list []*rules.Rule, commits []history.Commit
 			}
 			keys := rules.Keys(found)
 			if okPrev[i] {
-				fresh, _ := rules.Split(found, prev[i])
-				gone := rules.Minus(prev[i], keys)
+				fresh, gone := rules.Split(found, prev[i])
+				_, fresh, gone = rules.Moved(fresh, gone)
 				trials[i].Added += len(fresh)
 				trials[i].Mended += len(gone)
 				if len(fresh) > 0 {
