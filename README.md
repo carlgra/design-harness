@@ -1,7 +1,16 @@
 # design-harness
 
-A way of working on a codebase with agents in which the design is the source and the code
-is derived from it, and the scripts that enforce it.
+A tool for writing down a codebase's design and architecture and enforcing them: the
+rules a project is governed by, in one format, with a machine that holds the code to
+them. It is made for codebases that agents work on, where the design is the source and
+the code is derived from it.
+
+**A design holds what must be governed, and nothing else.** The architecture, the rules
+that must always hold, the decisions in force. It is not a description of the code and
+not a place for small decisions inside one function: those stay in the code. A project
+that already has architecture documents, rules or decision records brings them into
+this format when it adopts the method and retires the old copies, so that there is one
+place a rule is written, and every project holds its standards in the same shape.
 
 **The design is the repository's memory.** Each repository has one design document,
 `design/DESIGN.md`: what it is for, how it works, what must always hold, every decision in

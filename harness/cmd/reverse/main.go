@@ -201,7 +201,7 @@ func main() {
 			fmt.Println("reverse: wrote the project's section of CLAUDE.md")
 		}
 		fmt.Printf("reverse: %d place(s) are marked (inferred) and %d TODO(design): a person answers each.\n",
-			strings.Count(doc, "(inferred)"), strings.Count(doc, "TODO(design)"))
+			strings.Count(doc, "(inferred)"), design.Marks(doc))
 		fmt.Println("reverse: next:")
 		fmt.Printf("    go -C %s run ./cmd/check -validate=false       # is every file accounted for, does every named test exist\n", s.HarnessPath())
 		fmt.Printf("    go -C %s run ./cmd/coldread -only comprehension # can a session with no memory explain the repository from it\n", s.HarnessPath())

@@ -50,6 +50,18 @@ func areaSurvey(repo *design.Repo, area design.Area, today string) Survey {
 		}
 	}
 	s.Docs, s.Gates, s.Harness, s.OwnHarness = docs, nil, 0, false
+	// Documents outside the area may still hold its rules: an architecture
+	// document written for the whole repository, a decision record. They are
+	// named, so that what they say of this area is brought into its spine.
+	_, err := os.Stat(filepath.Join(repo.Root, "harness", "FRAMEWORK.md"))
+	for _, f := range repo.Files {
+		if design.Claimed(area.Files, f) || (err == nil && strings.HasPrefix(f, "harness/")) {
+			continue
+		}
+		if isDoc(strings.ToLower(f)) {
+			s.Elsewhere = append(s.Elsewhere, f)
+		}
+	}
 	return s
 }
 
@@ -81,6 +93,10 @@ func (s Survey) AreaMarkdown(repo string) string {
 		b.WriteString("None found.\n")
 	}
 	list(b, s.Docs, "`%s`")
+	if len(s.Elsewhere) > 0 {
+		b.WriteString("\n## Documents elsewhere in the repository that may hold rules of this area\n\nWritten for the repository as a whole, or for other parts. What they say that governs this area alone belongs in this spine.\n\n")
+		list(b, s.Elsewhere, "`%s`")
+	}
 	return b.String()
 }
 
@@ -213,7 +229,7 @@ func spineStep(step, root, harness, area string, force bool, repo *design.Repo, 
 		}
 		fmt.Printf("reverse: wrote %s\n", rel)
 		fmt.Printf("reverse: %d place(s) are marked (inferred) and %d TODO(design): a person answers each.\n",
-			strings.Count(doc, "(inferred)"), strings.Count(doc, "TODO(design)"))
+			strings.Count(doc, "(inferred)"), design.Marks(doc))
 		fmt.Println("reverse: next:")
 		fmt.Printf("    go -C %s run ./cmd/check -validate=false\n", hp)
 		fmt.Printf("    go -C %s run ./cmd/coldread -spine %s -only comprehension\n", hp, area)

@@ -190,7 +190,7 @@ func handed(repo *design.Repo, main, spine string) (string, []string, error) {
 	}
 	b := &strings.Builder{}
 	b.WriteString(strings.TrimSpace(main))
-	fmt.Fprintf(b, "\n\n---\n\nThe document above is the design of the whole repository. Below is the spine of one area of it, `%s`, at `%s`: the rules of that area alone, under the files the design gives it. What is asked about the repository is asked about this area, within the repository.\n\n", sp.Name, sp.Path)
+	fmt.Fprintf(b, "\n\n---\n\nThe document above is the design of the whole repository. Below is the spine of one area of it, `%s`, at `%s`: the rules of that area alone, under the files the design gives it. What is asked about the repository is asked about this area, within the repository. The spines of the other areas are withheld on purpose, as they are from whoever changes this one: that their insides are not described here is not a gap.\n\n", sp.Name, sp.Path)
 	b.WriteString(strings.TrimSpace(sp.Doc))
 	b.WriteString("\n")
 	return b.String(), []string{design.DocPath, sp.Path}, nil

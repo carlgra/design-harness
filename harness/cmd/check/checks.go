@@ -14,7 +14,7 @@ import (
 
 // Unfinished is the mark the reverse-engineering skeleton and draft leave
 // where a person has still to write or confirm something.
-const Unfinished = "TODO(design)"
+const Unfinished = design.Unfinished
 
 // Result is what a run found.
 type Result struct {
@@ -59,13 +59,8 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 	}
 }
 
-var inlineCode = regexp.MustCompile("`[^`\\n]*`")
-
-// unfinished counts the marks left for a person to answer. A mark written as
-// code, between backticks, is the mark being spoken of and not one left.
-func unfinished(body string) int {
-	return strings.Count(inlineCode.ReplaceAllString(body, ""), Unfinished)
-}
+// unfinished counts the marks left for a person to answer.
+func unfinished(body string) int { return design.Marks(body) }
 
 func runChecks(repo *design.Repo) *Result {
 	res := &Result{}

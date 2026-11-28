@@ -15,9 +15,10 @@ func shop(t *testing.T) (root, harness string) {
 	t.Helper()
 	root = t.TempDir()
 	files := map[string]string{
-		"design/DESIGN.md":              "---\nfiles: [go.mod]\nspines:\n  - name: cart\n    files: [internal/cart/**]\n  - name: checkout\n    files: [internal/checkout/**]\n---\n\n# shop\n\nTHE DESIGN OF THE SHOP\n\n### ADR-0001 — Go\n",
+		"design/DESIGN.md":              "---\nfiles: [go.mod, docs/**]\nspines:\n  - name: cart\n    files: [internal/cart/**]\n  - name: checkout\n    files: [internal/checkout/**]\n---\n\n# shop\n\nTHE DESIGN OF THE SHOP\n\n### ADR-0001 — Go\n",
 		"design/spines/checkout.md":     "---\ntests: []\n---\n# checkout\n\nCHECKOUT RULES\n",
 		"go.mod":                        "module shop\n",
+		"docs/ARCHITECTURE.md":          "# how the shop is built\n",
 		"internal/cart/cart.go":         "package cart\n",
 		"internal/cart/cart_test.go":    "package cart\nfunc TestAnEmptyCartIsRefused(t *testing.T) {}\n",
 		"internal/cart/DECISIONS.md":    "# decisions\n",
@@ -70,7 +71,7 @@ func TestASpinesSkeletonIsWrittenOnlyForAnAreaTheDesignDefines(t *testing.T) {
 	if sp == nil || sp.Err != nil {
 		t.Fatalf("the skeleton does not read as a spine: %+v", sp)
 	}
-	for _, want := range []string{SkeletonMark, "`internal/cart/**`", "cart/ADR-0001", repo.Name + "/ADR-0001"} {
+	for _, want := range []string{SkeletonMark, "`internal/cart/**`", "cart/ADR-NNNN", repo.Name + "/ADR-NNNN"} {
 		if !strings.Contains(sp.Doc, want) {
 			t.Fatalf("the skeleton lacks %q:\n%s", want, sp.Doc)
 		}
@@ -89,7 +90,7 @@ func TestASpineIsDraftedFromItsAreaAndTheDesignAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := areaSurvey(repo, a, "2026-01-31")
-	if s.Files != 3 || len(s.Tests) != 1 || s.Tests[0] != "TestAnEmptyCartIsRefused" {
+	if s.Files != 3 || len(s.Elsewhere) != 1 || len(s.Tests) != 1 || s.Tests[0] != "TestAnEmptyCartIsRefused" {
 		t.Fatalf("the survey is not of the area alone: %d files, tests %v", s.Files, s.Tests)
 	}
 	template, _ := os.ReadFile(filepath.Join(harness, "templates", "spine.md"))
@@ -97,7 +98,7 @@ func TestASpineIsDraftedFromItsAreaAndTheDesignAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"THE DESIGN OF THE SHOP", "internal/cart/DECISIONS.md", "TestAnEmptyCartIsRefused", SpineHeader("cart")} {
+	for _, want := range []string{"THE DESIGN OF THE SHOP", "internal/cart/DECISIONS.md", "docs/ARCHITECTURE.md", "TestAnEmptyCartIsRefused", SpineHeader("cart")} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("the prompt lacks %q", want)
 		}

@@ -37,7 +37,8 @@ notes:
 
 This is the design: what this repository is for, how it works, what must always
 hold, every decision in force with its reason and what was rejected, and which
-files realise it. It is current state, edited in place; git is its history. A
+files realise it. It holds what must be governed, and nothing else: a choice
+inside one function or file stays in the code. It is current state, edited in place; git is its history. A
 change to the code starts with a note under `design/changes/` and ends with this
 file saying what is now true.
 

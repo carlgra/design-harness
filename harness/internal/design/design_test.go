@@ -74,3 +74,16 @@ func TestAWorktreeIsNotANestedRepository(t *testing.T) {
 		}
 	}
 }
+
+// The marks left for a person are counted one way: in the body, and not a
+// mark written as code. The checker and the drafting command both count
+// with this, so they agree.
+func TestTheMarksLeftForAPersonAreCountedOneWay(t *testing.T) {
+	doc := "---\n# a comment that says TODO(design)\nfiles: []\n---\n\nTODO(design): one.\n\nWritten `Not recorded. TODO(design)` it is spoken of. Not recorded. TODO(design)\n"
+	if n := Marks(doc); n != 2 {
+		t.Fatalf("expected 2 marks, got %d", n)
+	}
+	if n := Marks("no frontmatter, TODO(design) once"); n != 1 {
+		t.Fatalf("a body alone is counted too: got %d", n)
+	}
+}
