@@ -44,7 +44,7 @@ import (
 const (
 	// SkeletonMark is the line a skeleton carries and a design does not: a
 	// draft may replace a document that has it.
-	SkeletonMark = "<!-- design:skeleton -->"
+	SkeletonMark = design.SkeletonMark
 	// DesignHeader and RulesHeader open the two parts of a drafting
 	// session's reply.
 	DesignHeader = "=== design/DESIGN.md ==="
@@ -255,7 +255,7 @@ func replaceableAt(docPath, name string, force bool) error {
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(string(b), SkeletonMark) {
+	if !design.IsSkeleton(string(b)) {
 		return fmt.Errorf("%s is no longer a skeleton, so a draft would replace a design someone wrote; -force replaces it", name)
 	}
 	return nil

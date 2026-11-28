@@ -45,8 +45,8 @@ repository shaped like its own, or spent effort before saying what was wrong.
    does for a title. Work `safe-push` must move goes to a name it can build that
    matches; where it can build none, it refuses, moves nothing and says what to type.
 4. **An update knows an earlier harness, and says what an update leaves.** A
-   `harness/` with `cmd/check` and a `go.mod` for the module `harness` is this harness,
-   with or without `FRAMEWORK.md`. `--update` replaces it; without `--update` bootstrap
+   `harness/` that holds `cmd/check/`, `go.mod` and `safe-push` is this harness, with or
+   without `FRAMEWORK.md`. `--update` replaces it; without `--update` bootstrap
    stops and says to use it. After an update the closing text is about an update: read
    the diff, run the checker, expect it to name tests the design cites from the harness
    it had. Bootstrap lists those it can see: tests the old harness held, the new one
@@ -60,9 +60,12 @@ repository shaped like its own, or spent effort before saying what was wrong.
    line saying the rules are off and how to switch them on. It does not refuse. A test
    `serves:` names must exist in every repository, whatever the map says.
 7. **A cold read refuses a document that is not a design, before any session.** A
-   skeleton, a design that accounts for no files, one missing a section that holds what
-   governs, or one whose every section is still a question is refused with what to do
-   first. It is a third outcome, not a FAIL.
+   skeleton, a design that accounts for no files, or one missing a section that holds
+   what governs is refused with what to do first. It is a third outcome, not a FAIL. A
+   draft with marks in it is still read. A skeleton is known by its mark on a line of
+   its own, in `internal/design`, for `coldread` and `reverse` alike: until now a
+   design that only mentioned the mark, as this repository's does, counted as a
+   skeleton and `reverse draft` would have replaced it without `-force`.
 
 A project that already has the harness need do nothing until it next updates. After
 `bootstrap --update`: a project whose rules were added to a `CLAUDE.md` that only
@@ -94,6 +97,8 @@ test is refused from the first run of the new checker.
   check that is sometimes wrong is switched off (ADR-0002); a line is not.
 - **Stop a cold read whenever the checker fails.** A person may want advice mid-change,
   with one file still unaccounted for. A skeleton has no such use.
+- **Refuse a design whose sections still carry `TODO(design)`.** A draft has them, and
+  a cold read of a draft is the method's own next step.
 
 ## Files
 
@@ -107,8 +112,11 @@ test is refused from the first run of the new checker.
 - `harness/cmd/check/checks.go`, `contracts.go`: the citation's refusal; the line when
   the contracts rules are off; `serves:` tests checked everywhere.
 - `harness/cmd/coldread/main.go`: the refusal before any session.
+- `harness/internal/design/design.go`: the skeleton's mark and how it is known;
+  `harness/cmd/reverse/main.go` uses it.
 - `harness/templates/DESIGN.md`, `CLAUDE.md`, `CLAUDE.nested.md`, and `CLAUDE.md` at
   the root: the `branches:` key, and the rule on branch names.
 - `design/DESIGN.md`, `harness/FRAMEWORK.md`, `README.md`: what is now true.
 - Tests beside each: `bootstrap_test.go`, `where_test.go`, `safe_push_test.go`,
-  `convention_test.go`, `checks_test.go`, `contracts_test.go`, `coldread/main_test.go`.
+  `convention_test.go`, `checks_test.go`, `contracts_test.go`, `coldread/main_test.go`,
+  `design_test.go`.

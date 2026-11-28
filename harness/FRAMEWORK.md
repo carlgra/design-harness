@@ -252,6 +252,12 @@ Two questions, each put to its own fresh session with no tools, handed the promp
 Each ends its reply with `VERDICT: PASS` or `VERDICT: FAIL`. The script reads that line
 and judges nothing itself.
 
+A document that is not yet a design is refused before any session is started: a
+skeleton nobody has drafted, one whose frontmatter accounts for no files, or one with no
+section for what must always hold, for decisions or for files. The command says which
+it found and what to do first. A draft with `TODO(design)` still in it is a design, and
+is read.
+
 **It is advice, not a gate.** A FAIL is a list of what the document does not say. Most of
 the time the right response is to mend the document and ask again; sometimes the session
 is wrong, and the person who merges says so. The verdicts go on the pull request for that

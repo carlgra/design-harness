@@ -87,3 +87,23 @@ func TestTheMarksLeftForAPersonAreCountedOneWay(t *testing.T) {
 		t.Fatalf("a body alone is counted too: got %d", n)
 	}
 }
+
+// A skeleton is known by its mark on a line of its own. A document that
+// speaks of the mark in a sentence, as the design of a harness does, is not
+// one, and neither is a document without it.
+func TestASkeletonIsKnownByItsMarkOnALineOfItsOwn(t *testing.T) {
+	cases := []struct {
+		name, doc string
+		want      bool
+	}{
+		{"a skeleton", "# x\n\n" + SkeletonMark + "\n\nTODO(design): what it is for.\n", true},
+		{"indented, with a carriage return", "# x\r\n  " + SkeletonMark + "\r\n", true},
+		{"spoken of", "A skeleton carries the comment `" + SkeletonMark + "`; a draft does not.\n", false},
+		{"a design", "# x\n\nWritten by someone.\n", false},
+	}
+	for _, c := range cases {
+		if got := IsSkeleton(c.doc); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}

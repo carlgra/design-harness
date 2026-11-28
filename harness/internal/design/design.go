@@ -517,6 +517,22 @@ const Unfinished = "TODO(design)"
 
 var inlineCode = regexp.MustCompile("`[^`\\n]*`")
 
+// SkeletonMark is the line a skeleton carries and a design does not: the
+// document is still as the harness wrote it, every section a question.
+const SkeletonMark = "<!-- design:skeleton -->"
+
+// IsSkeleton reports whether a document, a design or a spine, is still a
+// skeleton: it carries the mark on a line of its own. The mark spoken of in
+// a sentence, as a design of the harness itself speaks of it, is not one.
+func IsSkeleton(doc string) bool {
+	for _, line := range strings.Split(doc, "\n") {
+		if strings.TrimSpace(line) == SkeletonMark {
+			return true
+		}
+	}
+	return false
+}
+
 // Marks counts the marks left for a person in a document: in its body, not
 // its frontmatter, and not a mark written as code, between backticks, which
 // is the mark being spoken of and not one left. Every command counts with

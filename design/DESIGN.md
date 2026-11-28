@@ -22,6 +22,9 @@ tests:
   - TestASessionIsHandedItsPromptTheDesignAndNothingElse
   - TestAVerdictIsReadFromTheLastLineAndNothingElseCounts
   - TestASessionIsStartedWithExactlyTheToolsItIsGiven
+  - TestADocumentThatIsNotADesignIsRefusedBeforeAnySessionIsStarted
+  - TestADocumentThatIsNotADesignIsKnownWithoutAskingASession
+  - TestASkeletonIsKnownByItsMarkOnALineOfItsOwn
   - TestTheSurveySaysWhatIsThereAndDecidesNothing
   - TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn
   - TestADraftIsReadAsTheDesignAndTheRules
@@ -206,7 +209,17 @@ The parts, all under `harness/`:
   `VERDICT: PASS` or `VERDICT: FAIL` from the last line of each reply, prints the
   replies and can write them as markdown for a pull request. It exits non-zero when a
   session fails, so that a person's own script can tell; nothing in the harness reads
-  that.
+  that. Before it starts a session, or asks for the change, it looks at the document
+  and refuses one that is not a design: `design/DESIGN.md` still a skeleton; frontmatter
+  with no `files:` and no `spines:`, which accounts for no code; a document with no
+  heading that opens with one of `What must always hold`, `Decisions` and `Files`,
+  matched as a note's sections are, case and a leading "The" aside, and not inside a
+  code fence; or, with `-spine`, that area's spine still a skeleton. It says which it
+  found and what to do first, starts nothing, and exits 2, as it does for anything it
+  cannot run: the outcome is "no design to test", and it is not a FAIL. A design with
+  `TODO(design)` marks still in it is a design and is put to the sessions, since a cold
+  read is how a draft is tried; and a design the checker refuses is too, since a person
+  may want advice mid-change.
 - `cmd/reverse` writes down the design of a repository that has code and no design.
   `survey` lists what a machine can see. `skeleton` writes a `design/DESIGN.md` whose
   frontmatter accounts for every file and whose body is questions. `draft` starts one session
@@ -243,7 +256,9 @@ The parts, all under `harness/`:
   there is no one runner, and what was found is given in words. A job that calls
   another workflow names no runner and is passed over. With no workflow to read
   nothing is printed. A skeleton is known by one line it carries,
-  the comment `<!-- design:skeleton -->`; a draft does not carry it, so once a draft
+  the comment `<!-- design:skeleton -->` on a line of its own, which `internal/design`
+  recognises for every command; the comment written inside a sentence, as this
+  document writes it, is not the mark. A draft does not carry it, so once a draft
   is written the document counts as someone's and a second draft needs `-force`. The
   project's section of the rules file is what lies between the comments
   `<!-- design:project:begin -->` and `<!-- design:project:end -->`. The method's
@@ -603,12 +618,17 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   adds to a session is read at review)*
 - **INV-006** — The `coldread` command judges nothing: a verdict is the last line of a
   reply in the exact form, anything else is a failure, and no verdict is read by any
-  other command. *(`test: TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`)*
+  other command. It starts no session on a document that is not a design, which it
+  tells from the document's shape alone. *(`test:
+  TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`, `test:
+  TestADocumentThatIsNotADesignIsRefusedBeforeAnySessionIsStarted`, `test:
+  TestADocumentThatIsNotADesignIsKnownWithoutAskingASession`)*
 - **INV-007** — The session that drafts a design can read and cannot write. Only the
   `reverse` command writes, only `design/DESIGN.md` and the marked section of
   the rules file, and never over a design that is no longer a skeleton unless forced.
   *(`test: TestASessionIsStartedWithExactlyTheToolsItIsGiven`, `test:
   TestADraftNeverReplacesADesignSomeoneWrote`, `test:
+  TestASkeletonIsKnownByItsMarkOnALineOfItsOwn`, `test:
   TestTheProjectsRulesReplaceOnlyTheirOwnSection`, `test:
   TestADraftIsReadAsTheDesignAndTheRules`)*
 - **INV-008** — A survey and a skeleton decide nothing: the frontmatter a skeleton writes
@@ -801,6 +821,11 @@ change to a design is material. The model, the most a session may spend in dolla
 the form of the verdict line are values in `harness/coldread/coldread.yaml`; the questions are the two prompt files
 beside it.
 
+A document that is not yet a design is not put to a session at all. The command
+refuses it first, from the document alone, and says what to do: a session handed a
+skeleton or a README says so only in its verdict, as a FAIL that reads like any other,
+after it has been paid for.
+
 No tools and no memory because the question is whether the document is enough, and a
 session that can read the code answers a different question. Two questions because
 they fail differently: a document can describe a repository well and still leave a
@@ -819,6 +844,11 @@ particular change to guesswork.
   the one design, whichever repository it is (ADR-0009).
 - **One question.** Comprehension alone passes a design that explains the present and
   is silent on what a change must respect.
+- **Stop a cold read whenever the checker fails.** A person may want advice on a design
+  mid-change, while a file is still unaccounted for. A skeleton, or a document with no
+  decisions section, has no such use.
+- **Refuse a design that still has marks in it.** A draft has them, and a cold read of
+  a draft is the step the method asks for next.
 
 ### ADR-0004 — A design is reverse-engineered in steps, and a person takes it on
 
@@ -1216,11 +1246,11 @@ No machine holds a design to it yet.
 | `bootstrap` | Adopts the method in a project: copies `harness/`, then adds what is missing, where the project keeps such things, and overwrites nothing (INV-009). `--update` replaces a project's harness and keeps its settings. |
 | `harness/FRAMEWORK.md` | The method, written for whoever works in a project that uses it. Its presence is how `bootstrap` knows a `harness/` is this one in its current form. |
 | `harness/go.mod`, `harness/go.sum` | The harness's own module, `harness`, with one dependency (ADR-0005). |
-| `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files. |
+| `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files, counts the marks left for a person and knows a skeleton by its mark. |
 | `harness/internal/session/` | Starts a model session through the `claude` tool with exactly the tools it is given; reads a settings file. |
 | `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007); `branch.go`, how a change branch is named here (ADR-0006). |
 | `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files, the two rules of ADR-0010 and the line that says when they are off; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. |
-| `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
+| `harness/cmd/coldread/` | The two questions (ADR-0003): refuses a document that is not a design, composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
 | `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes; `where.go` what the `where` step works out for `bootstrap`: the rules file, and the runner the repository's workflows run on. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
 | `harness/cmd/branch/` | The command the push script calls to ask whether a name is a change branch's (ADR-0006). |
@@ -1248,6 +1278,9 @@ Paths a fault would travel, and the test that walks each:
 - a cold-read session is handed the design and the change and nothing else — `TestASessionIsHandedItsPromptTheDesignAndNothingElse`
 - a reply that does not end in the verdict form is not a pass — `TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`
 - a session is started with the tools it was given and no other — `TestASessionIsStartedWithExactlyTheToolsItIsGiven`
+- sessions are spent on a skeleton, and say so only in their verdicts — `TestADocumentThatIsNotADesignIsRefusedBeforeAnySessionIsStarted`
+- a draft with marks in it is refused as no design, or a README under frontmatter is taken for one — `TestADocumentThatIsNotADesignIsKnownWithoutAskingASession`
+- a design that speaks of the skeleton's mark is taken for a skeleton, and a draft replaces it — `TestASkeletonIsKnownByItsMarkOnALineOfItsOwn`
 - a survey invents nothing and misses no file — `TestTheSurveySaysWhatIsThereAndDecidesNothing`
 - a skeleton passes the checker and switches nothing on — `TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn`
 - a reply that is not a design is refused, not half written — `TestADraftIsReadAsTheDesignAndTheRules`
