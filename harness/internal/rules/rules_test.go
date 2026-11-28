@@ -2,6 +2,7 @@ package rules
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"harness/internal/design"
@@ -30,6 +31,12 @@ func TestABreachIsKnownByItsFileAndTextNotItsLine(t *testing.T) {
 	fresh, gone = Split(before[:1], Keys(before))
 	if len(fresh) != 0 || !reflect.DeepEqual(gone, []string{"a.go: TODO two"}) {
 		t.Fatalf("fresh %v gone %v", fresh, gone)
+	}
+	// A long line cut at a space, or inside a character, reads back from the
+	// list as the breach it was written as.
+	long := r.Scan("a.go", []byte("TODO "+strings.Repeat("x", 153)+" é tail\n"))
+	if got := ParseKnown(long[0].Key() + "\n"); len(got) != 1 || got[0] != long[0].Key() {
+		t.Fatalf("a long breach does not read back as itself: %q", long[0].Key())
 	}
 	if got := r.Scan("a.bin", []byte("TODO\x00")); got != nil {
 		t.Fatalf("a file that is not text was read: %v", got)

@@ -96,6 +96,13 @@ commits: conventional
 # refused while it lacks a pull request, the harness check or the refusal of
 # a force push.
 protection: required
+# The check of a rule this design states. The commands' old names are found
+# nowhere but in the lines of bootstrap that carry an old harness across,
+# which are the list of known breaches.
+rules:
+  - id: ADR-0012
+    files: [harness/**, bootstrap]
+    forbid: '(?i)elephant|goldfish'
 # This document is over the size it tells others to keep, and says so here
 # until it is divided into areas (see What no machine proves yet).
 size: 1400
@@ -1053,6 +1060,9 @@ in `harness/reverse/` and `harness/coldread/`. A place a draft could not answer 
 settings across from the old names and renames the old marks in its `CLAUDE.md` and
 design. A name says what a thing does, so that a reader needs no story to follow a
 command line; the owner found the two animals confused a reader who met them cold.
+A check holds the old names out of `harness/` and `bootstrap`; the lines of `bootstrap`
+that carry an old harness across are its known breaches, and come off the list when
+that carrying is dropped.
 
 #### Alternatives rejected
 

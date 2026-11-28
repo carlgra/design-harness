@@ -70,8 +70,16 @@ func git(root string, args ...string) (string, error) {
 
 // Commits are the last n changes on the first-parent line of HEAD, newest
 // first, each with the paths it touched.
-func Commits(root string, n int) ([]Commit, error) {
-	out, err := git(root, "log", "--first-parent", fmt.Sprintf("-n%d", n), "--format=%H%x09%P%x09%cs%x09%s", "HEAD")
+func Commits(root string, n int) ([]Commit, error) { return CommitsSince(root, n, "") }
+
+// CommitsSince is Commits, going back no further than a day, YYYY-MM-DD,
+// where one is given.
+func CommitsSince(root string, n int, since string) ([]Commit, error) {
+	args := []string{"log", "--first-parent", fmt.Sprintf("-n%d", n), "--format=%H%x09%P%x09%cs%x09%s"}
+	if since != "" {
+		args = append(args, "--since="+since+" 00:00:00")
+	}
+	out, err := git(root, append(args, "HEAD")...)
 	if err != nil {
 		return nil, err
 	}

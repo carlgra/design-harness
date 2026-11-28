@@ -186,7 +186,9 @@ const textWidth = 160
 func squeeze(s string) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if len(s) > textWidth {
-		s = s[:textWidth]
+		// Cut on a whole character, and leave no space at the end: a list
+		// is read back a line at a time, trimmed.
+		s = strings.TrimSpace(strings.ToValidUTF8(s[:textWidth], ""))
 	}
 	return s
 }

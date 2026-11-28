@@ -1,0 +1,7 @@
+# Breaches of ADR-0012 that were in the tree when its check was adopted.
+# The checker allows these and refuses any other. This list only shrinks:
+# a breach that is mended comes off it, with `check -known`.
+bootstrap: [ ! -f "$T/$f" ] || ! grep -q 'elephant:\|TODO(elephant)' "$T/$f" || {
+bootstrap: [ ! -f "$T/harness/elephant/elephant.yaml" ] || cp "$T/harness/elephant/elephant.yaml" "$KEEP/reverse/reverse.yaml"
+bootstrap: [ ! -f "$T/harness/goldfish/goldfish.yaml" ] || cp "$T/harness/goldfish/goldfish.yaml" "$KEEP/coldread/coldread.yaml"
+bootstrap: sed -e 's/elephant:project:/design:project:/g' -e 's/elephant:skeleton/design:skeleton/g' -e 's/TODO(elephant)/TODO(design)/g' "$T/$f" > "$KEEP/renamed" && cat

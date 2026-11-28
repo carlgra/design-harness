@@ -9,7 +9,7 @@
 // too strict or too loose afterwards.
 //
 //	go -C harness run ./cmd/backtest                 # the last 200 changes
-//	go -C harness run ./cmd/backtest -n 1000
+//	go -C harness run ./cmd/backtest -n 1000 -since 2026-01-01
 //	go -C harness run ./cmd/backtest -rule INV-007   # one rule, with every change it would have refused
 //	go -C harness run ./cmd/backtest -forbid 'from "\.\./billing' -files 'src/**'   # a rule not yet written down
 //	go -C harness run ./cmd/backtest -run            # command rules too, in a checkout of each change
@@ -33,6 +33,7 @@ import (
 func main() {
 	rootFlag := flag.String("root", "", "repository root (default: walk up from the working directory to the first directory holding design/DESIGN.md)")
 	nFlag := flag.Int("n", 200, "how many changes to go back")
+	sinceFlag := flag.String("since", "", "go back no further than this day, YYYY-MM-DD")
 	ruleFlag := flag.String("rule", "", "only this rule, by id (an area's as area/INV-001), with every change it would have refused")
 	runFlag := flag.Bool("run", false, "also try rules that are commands, by checking out each change in a worktree of its own: slow")
 	forbidFlag := flag.String("forbid", "", "try a pattern no line may match, as a rule not yet in the design")
@@ -83,7 +84,7 @@ func main() {
 		list = one
 	}
 
-	commits, err := history.Commits(root, *nFlag)
+	commits, err := history.CommitsSince(root, *nFlag, *sinceFlag)
 	if err != nil {
 		fatal(err)
 	}
@@ -91,7 +92,11 @@ func main() {
 		fatal(fmt.Errorf("no commits to read"))
 	}
 
-	rep := Report{Repo: repo.Name, Commits: commits, Asked: *nFlag, Trial: trial, Detail: *ruleFlag != "" || trial}
+	asked := *nFlag
+	if *sinceFlag != "" {
+		asked = 0
+	}
+	rep := Report{Repo: repo.Name, Commits: commits, Asked: asked, Trial: trial, Detail: *ruleFlag != "" || trial}
 	if !trial && *ruleFlag == "" {
 		rep.Areas = scoreAreas(repo, commits)
 	}
