@@ -176,7 +176,9 @@ and commits nothing. When it finishes, the checker passes.
 
 The rules go where the project's instructions for an agent live. Where `CLAUDE.md` is a
 link to `AGENTS.md`, or holds only an `@AGENTS.md` import, they are added to `AGENTS.md`,
-and bootstrap says so.
+and bootstrap says so. The CI workflow runs on the runner the project's other workflows
+all name; where they name more than one, it is written for `ubuntu-latest` and bootstrap
+says that `runs-on:` is a line to check.
 
 Then, in the project:
 

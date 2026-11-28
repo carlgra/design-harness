@@ -480,3 +480,39 @@ func TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive(t *testing.T) {
 		})
 	}
 }
+
+// The workflow bootstrap writes runs where the repository's own workflows
+// run: on the one runner they all name, and where they name two, on the
+// template's, with a line that says the runner is one to check and what was
+// found. A repository with no workflow is told nothing.
+func TestTheWorkflowRunsWhereTheRepositorysWorkflowsRun(t *testing.T) {
+	script := theScript(t)
+	job := func(runsOn string) string {
+		return "name: ci\non: [push]\njobs:\n  build:\n    runs-on: " + runsOn + "\n    steps:\n      - run: make\n"
+	}
+	const written = ".github/workflows/harness.yml"
+
+	root := aProject(t, map[string]string{".github/workflows/ci.yml": job("self-hosted"), ".github/workflows/release.yml": job("self-hosted")})
+	out := run(t, "sh", script, "--no-hooks", root)
+	if ci := readIn(t, root, written); !strings.Contains(ci, "    runs-on: self-hosted\n") || strings.Contains(ci, "ubuntu-latest") {
+		t.Errorf("the workflow does not run where the repository's do:\n%s", ci)
+	}
+	if !strings.Contains(out, "runs-on: self-hosted in that workflow") || !strings.Contains(out, "harness: OK") {
+		t.Errorf("bootstrap did not say which runner it wrote:\n%s", out)
+	}
+
+	root = aProject(t, map[string]string{".github/workflows/ci.yml": job("self-hosted"), ".github/workflows/mac.yml": job("macos-14")})
+	out = run(t, "sh", script, "--no-hooks", root)
+	if ci := readIn(t, root, written); !strings.Contains(ci, "    runs-on: ubuntu-latest\n") {
+		t.Errorf("with two runners to choose from the workflow was not left on the template's:\n%s", ci)
+	}
+	if !strings.Contains(out, "is a line to check: this repository's workflows run on macos-14 and self-hosted") {
+		t.Errorf("bootstrap did not say the runner is a line to check:\n%s", out)
+	}
+
+	root = aProject(t, map[string]string{"README.md": "# shop\n"})
+	out = run(t, "sh", script, "--no-hooks", root)
+	if ci := readIn(t, root, written); !strings.Contains(ci, "    runs-on: ubuntu-latest\n") || strings.Contains(out, "runs-on") {
+		t.Errorf("a repository with no workflow was told about a runner:\n%s", out)
+	}
+}

@@ -234,6 +234,21 @@ if [ "$CI" -eq 1 ]; then
     fi
     did wrote ".github/workflows/harness.yml"
     [ -z "${CI_NOTE:-}" ] || did note "$CI_NOTE"
+    # THE WORKFLOW RUNS WHERE THE PROJECT'S WORKFLOWS RUN. The template names
+    # GitHub's own runner. Where every job the project already has names one
+    # other runner, that is written; where they differ, or one is not a plain
+    # label, the template's stays and is said to be a line to check.
+    RUNS_ON="$(where runs_on)"
+    RUNS_CHECK="$(where runs_on_check)"
+    if [ -n "$RUNS_ON" ] && [ "$RUNS_ON" != "ubuntu-latest" ]; then
+      FITTED="$(mktemp)"
+      sed "s|runs-on: ubuntu-latest|runs-on: $RUNS_ON|" "$T/.github/workflows/harness.yml" > "$FITTED"
+      cat "$FITTED" > "$T/.github/workflows/harness.yml"
+      rm -f "$FITTED"
+      did note "runs-on: $RUNS_ON in that workflow, as every other workflow here has it"
+    elif [ -n "$RUNS_CHECK" ]; then
+      did note "runs-on: ubuntu-latest in that workflow is a line to check: $RUNS_CHECK, and bootstrap cannot tell which the harness job should use"
+    fi
   fi
 fi
 

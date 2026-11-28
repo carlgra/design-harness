@@ -38,6 +38,8 @@ tests:
   - TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects
   - TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive
   - TestTheRulesFileIsTheOneThatHoldsTheInstructions
+  - TestTheWorkflowRunsWhereTheRepositorysWorkflowsRun
+  - TestTheRunnerIsReadFromTheWorkflowsThatAreThere
   - TestAChangeBranchThatPassesIsPushed
   - TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed
   - TestABranchAlreadyMergedIsNotPushedToAgain
@@ -198,13 +200,15 @@ The parts, all under `harness/`:
   its reply to `design/DESIGN.md` and to the project's section of the rules file. `prompt`
   prints what that session would be handed. A fifth step, `where`, is for scripts: it
   prints what `bootstrap` needs to know of a repository as `key=value` lines. `rules=` is
-  the rules file, and `rules_because=` why, when it is not `CLAUDE.md`. Under a root it
+  the rules file, and `rules_because=` why, when it is not `CLAUDE.md`. `runs_on=` is
+  the runner the repository's workflows run on, or in its place `runs_on_check=` says
+  what they run on when that is not one runner. Under a root it
   prints `root=`, the root's name, which is
   that of its `origin` or, with none, of its directory; `path=`, this repository's path
   from the root with forward slashes, `billing` or `services/billing`; and where the
   root's map lists a contracts repository beside it, `contracts_path=`, its path from
   the root, and `contracts_remote=`, its remote as the map gives it. `bootstrap` reads
-  the first for where to write the rules and the last two to write a CI workflow.
+  the first for where to write the rules and the rest to write a CI workflow.
 
   The rules file is the file at a repository's root that holds its standing
   instructions for an agent. It is `AGENTS.md` where `CLAUDE.md` is a link to it, or
@@ -213,7 +217,17 @@ The parts, all under `harness/`:
   method's rules is the rules file, `CLAUDE.md` before `AGENTS.md`, so that an update
   finds them where they are. In every other case it is `CLAUDE.md`, one that imports
   `AGENTS.md` among lines of its own included. `bootstrap` and `draft` both ask
-  `RulesFile`, in `where.go`, and neither decides it again. A skeleton is known by one line it carries,
+  `RulesFile`, in `where.go`, and neither decides it again.
+
+  The runner is read from the `runs-on:` of every job in every `.yml` or `.yaml` file
+  under `.github/workflows/`, `harness.yml` aside, since that is the file being
+  written. A plain label is one word of letters, digits, `.`, `_` and `-`:
+  `ubuntu-latest`, `self-hosted`. Where every job that names a runner names the same
+  plain label, that is the runner. Where they name two, or one names a list, an
+  expression such as a matrix's value, or a group, or a workflow cannot be parsed,
+  there is no one runner, and what was found is given in words. A job that calls
+  another workflow names no runner and is passed over. With no workflow to read
+  nothing is printed. A skeleton is known by one line it carries,
   the comment `<!-- design:skeleton -->`; a draft does not carry it, so once a draft
   is written the document counts as someone's and a second draft needs `-force`. The
   project's section of the rules file is what lies between the comments
@@ -444,7 +458,11 @@ root's found on disk is not looked up.
 that exists, and says which file that is when it is not `CLAUDE.md`, the CI workflow, then the skeleton and the first note, then installs the
 hooks, and runs the checker. Each of those is skipped when the thing is already there,
 and a `harness/` directory that is not this harness stops it before anything is
-written. `--update` is the one thing that replaces, and it replaces what is the
+written. The CI workflow is written from a template whose one job runs on
+`ubuntu-latest`. Where the repository's own workflows all run on one other runner,
+bootstrap writes that runner in its place and says so. Where they give no one runner,
+it leaves the template's and prints that `runs-on:` is a line to check, with what the
+workflows run on. The same is done for a nested repository's workflow. `--update` is the one thing that replaces, and it replaces what is the
 harness's: it swaps a project's `harness/` for this one, whole, keeping only the
 project's two settings files, `coldread/coldread.yaml` and `reverse/reverse.yaml`;
 and it rewrites the method's rules in the rules file, the lines between their two marks,
@@ -636,6 +654,7 @@ that due. None is accepted as final.
 | INV-011 | the server's protection is read at a push, by a repository that asks, as an administrator; switched off and merged past in the server's own pages, nothing says so until the next administrator pushes, and a repository none of whose administrators push is never read | a scheduled CI job that reads it with a token an administrator stored, and fails | the first project that asks for it |
 | INV-011 | `-set` carries back the settings of a protection that are listed in *How it works*; one the server adds later is dropped by it without a word | `-set` refuses a protection holding a key it does not know | the first one lost |
 | INV-011 | a ruleset's rules are read from the shape the server documents; no ruleset has been read from a live repository by a test | a test against a repository kept for it | the first project protected by a ruleset alone |
+| INV-009 | the runner bootstrap writes into a project's CI workflow is read from the project's other workflows, and a test proves what is written; that the job starts on that runner is seen when the project's first pull request runs | none a test here can give: it is a fact about the project's server | not due |
 | INV-012 | read at review | a test that fails on any `..` path or absolute path in a script, and on a name from a list of project names | the first slip |
 | INV-017 | definitions are read from protobuf only; a contracts repository in another format, OpenAPI or JSON Schema, has its notes held to the block and nothing scanned | a scan per format, behind the same two rules | the first project whose contracts are not protobuf |
 | INV-017 | a contracts repository whose default branch is neither `main` nor `master`, checked out without `origin/HEAD`, as a CI checkout is, is refused until a step sets it | the workflow template sets it after checkout | the first such repository |
@@ -788,7 +807,11 @@ go in the file that holds the repository's standing instructions: `AGENTS.md` wh
 file that only points elsewhere are read by the one agent that follows the pointer's
 file and by no other, and those agents are then told nothing of the design, the notes
 or `safe-push`. Bootstrap says which file it chose, because the choice is made from what
-a file contains and a person should see it made.
+a file contains and a person should see it made. The CI workflow runs on the runner the
+repository's own workflows run on, where they agree on one: a repository that runs
+everything on its own runners may have GitHub's switched off or unpaid for, and a
+required check that never starts blocks every merge. Where they do not agree bootstrap
+does not guess; it keeps the template's runner and says the line is one to check.
 
 #### Alternatives rejected
 
@@ -808,6 +831,12 @@ a file contains and a person should see it made.
   both through the import is handed them twice.
 - **Move a project's instructions into one file for it.** They are the project's;
   adopting overwrites nothing (INV-009).
+- **Copy the first `runs-on:` found, or the commonest.** Where workflows differ, either
+  is a guess, and a guess written without a word is what a person does not think to
+  check.
+- **Copy a list or an expression across.** A matrix's value means nothing outside its
+  job, and a list of labels is copied right only by something that understands every
+  form the key takes.
 
 ### ADR-0006 — Nothing reaches main except through a pull request, and there is one door
 
@@ -1084,7 +1113,7 @@ No machine holds a design to it yet.
 | `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007). |
 | `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. |
 | `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
-| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes; `where.go` what the `where` step works out for `bootstrap`, the rules file first. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. |
+| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes; `where.go` what the `where` step works out for `bootstrap`: the rules file, and the runner the repository's workflows run on. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
 | `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the frontmatter's `protection:`, the `gh` tool and what is printed. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
@@ -1144,6 +1173,8 @@ Paths a fault would travel, and the test that walks each:
 - an update replaces the harness and the method's rules, and nothing that is the project's — `TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`
 - the method's rules added to a `CLAUDE.md` that only points at `AGENTS.md` are read by one agent and no other — `TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive`
 - a `CLAUDE.md` with rules of its own is taken for a pointer, or a pointer for rules — `TestTheRulesFileIsTheOneThatHoldsTheInstructions`
+- a CI workflow written for a runner the repository does not use, with nothing said — `TestTheWorkflowRunsWhereTheRepositorysWorkflowsRun`
+- a list, an expression or two runners is taken for one runner — `TestTheRunnerIsReadFromTheWorkflowsThatAreThere`
 - a design divided into areas passes, with each file counted once — `TestADesignDividedIntoAreasPasses`
 - an area with no spine, or a spine with no area, is refused — `TestAnAreaHasASpineAndASpineHasAnArea`
 - a file two areas hold is refused, and so is one nothing holds — `TestAFileIsUnderOneSpine`

@@ -3,7 +3,11 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // What bootstrap asks of a repository it is about to write into. The scripts
@@ -70,4 +74,88 @@ func onlyImports(doc, name string) bool {
 		}
 	}
 	return imports
+}
+
+// WorkflowsDir is where a repository's CI workflows live, and HarnessWorkflow
+// the one bootstrap writes there.
+const (
+	WorkflowsDir    = ".github/workflows"
+	HarnessWorkflow = "harness.yml"
+)
+
+// plainLabel is a runner named by one word, ubuntu-latest or self-hosted: a
+// value that can be written into another workflow as it stands.
+var plainLabel = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// RunsOn reads what the jobs of the repository's own workflows run on, so
+// that the workflow bootstrap writes runs where they do. label is the one
+// runner every job names, when every job names the same one as a plain
+// label. Where they differ, or one is not a plain label, a list, an
+// expression or a matrix's value, label is empty and check says what was
+// found: bootstrap then keeps its own runner and says the line is one to
+// check. With no workflow to read both are empty. The harness's own workflow
+// is not read: it is the one being written.
+func RunsOn(root string) (label, check string) {
+	labels, others := map[string]bool{}, map[string]bool{}
+	entries, _ := os.ReadDir(filepath.Join(root, filepath.FromSlash(WorkflowsDir)))
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || name == HarnessWorkflow || !(strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")) {
+			continue
+		}
+		var w struct {
+			Jobs map[string]struct {
+				RunsOn yaml.Node `yaml:"runs-on"`
+			} `yaml:"jobs"`
+		}
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(WorkflowsDir), name))
+		if err == nil {
+			err = yaml.Unmarshal(b, &w)
+		}
+		if err != nil {
+			others["a workflow that could not be read, "+name] = true
+			continue
+		}
+		for _, job := range w.Jobs {
+			switch n := job.RunsOn; {
+			case n.Kind == 0:
+				// A job that calls another workflow names no runner.
+			case n.Kind == yaml.ScalarNode && plainLabel.MatchString(n.Value):
+				labels[n.Value] = true
+			case n.Kind == yaml.ScalarNode && strings.Contains(n.Value, "${{"):
+				others["an expression"] = true
+			case n.Kind == yaml.SequenceNode:
+				others["a list of labels"] = true
+			default:
+				others["a value that is not one label"] = true
+			}
+		}
+	}
+	if len(labels) == 1 && len(others) == 0 {
+		for l := range labels {
+			return l, ""
+		}
+	}
+	if len(labels)+len(others) == 0 {
+		return "", ""
+	}
+	found := append(sortedKeys(labels), sortedKeys(others)...)
+	return "", "this repository's workflows run on " + oxford(found)
+}
+
+func sortedKeys(m map[string]bool) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// oxford joins a list as a sentence would: a, b and c.
+func oxford(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
 }

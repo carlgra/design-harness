@@ -145,6 +145,11 @@ func main() {
 		if why != "" {
 			fmt.Printf("rules_because=%s\n", why)
 		}
+		if label, check := RunsOn(root); label != "" {
+			fmt.Printf("runs_on=%s\n", label)
+		} else if check != "" {
+			fmt.Printf("runs_on_check=%s\n", check)
+		}
 		if parent != nil {
 			fmt.Printf("root=%s\npath=%s\n", parent.Name, parent.Path)
 		}

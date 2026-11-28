@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,57 @@ func TestTheRulesFileIsTheOneThatHoldsTheInstructions(t *testing.T) {
 			}
 			if (got == AgentsFile) != (why != "") {
 				t.Errorf("AGENTS.md is chosen with a reason and CLAUDE.md with none; got %q for %s", why, got)
+			}
+		})
+	}
+}
+
+// The runner is read from the workflows that are there: one plain label that
+// every job agrees on is the answer; jobs that differ, a list, an expression
+// or a workflow that does not parse are no answer, and what was found is
+// said; no workflow at all is neither. The harness's own workflow and a job
+// that only calls another workflow are not read.
+func TestTheRunnerIsReadFromTheWorkflowsThatAreThere(t *testing.T) {
+	job := func(runsOn string) string {
+		return "name: ci\non: [push]\njobs:\n  build:\n    runs-on: " + runsOn + "\n    steps:\n      - run: make\n"
+	}
+	cases := []struct {
+		name      string
+		workflows map[string]string
+		label     string
+		check     string // a part of what is said, "" when nothing is
+	}{
+		{"no workflows", nil, "", ""},
+		{"only the harness's own", map[string]string{"harness.yml": job("self-hosted")}, "", ""},
+		{"one runner", map[string]string{"ci.yml": job("self-hosted"), "harness.yml": job("ubuntu-latest")}, "self-hosted", ""},
+		{"every job agrees", map[string]string{"ci.yml": job("build-pool"), "release.yaml": job("'build-pool'") + "  ship:\n    runs-on: build-pool\n"}, "build-pool", ""},
+		{"the default", map[string]string{"ci.yml": job("ubuntu-latest")}, "ubuntu-latest", ""},
+		{"two runners", map[string]string{"ci.yml": job("self-hosted"), "mac.yml": job("macos-14")}, "", "macos-14 and self-hosted"},
+		{"a list of labels", map[string]string{"ci.yml": job("[self-hosted, linux, x64]")}, "", "a list of labels"},
+		{"a matrix", map[string]string{"ci.yml": job("${{ matrix.os }}")}, "", "an expression"},
+		{"a label and an expression", map[string]string{"ci.yml": job("self-hosted"), "os.yml": job("${{ matrix.os }}")}, "", "self-hosted and an expression"},
+		{"a group", map[string]string{"ci.yml": job("\n      group: big")}, "", "a value that is not one label"},
+		{"a workflow that does not parse", map[string]string{"ci.yml": "jobs: [\n"}, "", "could not be read, ci.yml"},
+		{"a job that calls a workflow", map[string]string{"ci.yml": job("self-hosted") + "  call:\n    uses: ./.github/workflows/other.yml\n"}, "self-hosted", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, filepath.FromSlash(WorkflowsDir))
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range c.workflows {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			label, check := RunsOn(root)
+			if label != c.label {
+				t.Errorf("the runner is %q, want %q", label, c.label)
+			}
+			if (c.check == "") != (check == "") || !strings.Contains(check, c.check) {
+				t.Errorf("what is said is %q, want it to hold %q", check, c.check)
 			}
 		})
 	}
