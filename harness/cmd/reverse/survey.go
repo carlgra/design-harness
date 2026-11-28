@@ -13,6 +13,7 @@ import (
 
 	"harness/internal/convention"
 	"harness/internal/design"
+	"harness/internal/history"
 )
 
 // Survey is what a machine can say about a repository without a model: the
@@ -36,7 +37,14 @@ type Survey struct {
 	Docs []string
 	// Elsewhere, in the survey of one area, are such files outside it.
 	Elsewhere []string
-	CI        []string
+	// Together are the directories that changed in the same commits, most
+	// often first, over the last Changes changes: where a change stays, and
+	// so where one area ends and the next begins.
+	Together []history.Pair
+	Changes  int
+	// Stated are rules a person handed the draft, in their words.
+	Stated string
+	CI     []string
 	// Subjects are the most recent commit subjects; Conventional is how many
 	// of them are Conventional Commits.
 	Subjects     []string
@@ -182,6 +190,26 @@ func survey(repo *design.Repo, parent *design.Parent, subjects []string, today s
 		}
 	}
 	return s
+}
+
+// wide is how many directories a change may touch and still say something
+// about which belong together.
+const wide = 8
+
+// changedTogether reads the last n changes and records which directories
+// changed in the same one. A repository with no history records nothing.
+func (s *Survey) changedTogether(root string, n int) {
+	commits, err := history.Commits(root, n)
+	if err != nil || len(commits) == 0 {
+		return
+	}
+	s.Changes = len(commits)
+	s.Together, _ = history.Together(commits, func(p string) string {
+		if strings.HasPrefix(p, "design/") || strings.HasPrefix(p, "harness/") || design.Exempt[p] {
+			return ""
+		}
+		return history.Dir(p)
+	}, wide)
 }
 
 // kindOf names a nested repository's kind from what it is called: the one
@@ -410,6 +438,20 @@ func (s Survey) Markdown() string {
 		b.WriteString("None found.\n")
 	}
 	list(b, s.Docs, "`%s`")
+	if s.Changes > 0 {
+		fmt.Fprintf(b, "\n## Directories that change together\n\nOver the last %d changes on the default branch, the directories that changed in the same change, most often first. A change that touched more than %d directories is a sweep and is left out. This is the evidence of where an area's boundary is: an area is a part a change can stay inside.\n\n", s.Changes, wide)
+		n := 0
+		for _, p := range s.Together {
+			if p.Together < 3 || n == 25 {
+				break
+			}
+			n++
+			fmt.Fprintf(b, "- `%s` and `%s`: %d changes together; `%s` changed in %d, `%s` in %d\n", p.A, p.B, p.Together, p.A, p.OfA, p.B, p.OfB)
+		}
+		if n == 0 {
+			b.WriteString("No two directories changed together three times.\n")
+		}
+	}
 	fmt.Fprintf(b, "\n## Commits\n\n%d of the last %d subjects are Conventional Commits.", s.Conventional, len(s.Subjects))
 	if s.AsksConventional() {
 		b.WriteString(" The history already follows the convention.")

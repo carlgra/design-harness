@@ -127,6 +127,7 @@ func spinePrompt(harness string, s Survey, repo, template, mainDoc string) (stri
 	b.WriteString(strings.TrimRight(strings.ReplaceAll(string(instructions), "{{HEADER}}", SpineHeader(s.Name)), "\n"))
 	b.WriteString("\n\n---\n\n")
 	b.WriteString(strings.TrimSpace(s.AreaMarkdown(repo)))
+	b.WriteString(statedRules(s.Stated))
 	b.WriteString("\n\n---\n\nThe shape to fill:\n\n````markdown\n")
 	b.WriteString(strings.TrimSpace(strings.ReplaceAll(s.SpineSkeleton(template, repo), SkeletonMark+"\n\n", "")))
 	fmt.Fprintf(b, "\n````\n\n---\n\nThe design of `%s`, the repository. What it decides binds this area: cite it as `%s/ADR-NNNN`, and do not restate it.\n\n````markdown\n", repo, repo)
@@ -163,7 +164,7 @@ func splitSpine(reply, area string) (string, error) {
 
 // spineStep is a step of the command asked of one area and not of the whole
 // repository: skeleton, prompt or draft.
-func spineStep(step, root, harness, area string, force bool, repo *design.Repo, today string, ask func(model, prompt string) (string, error), model string) error {
+func spineStep(step, root, harness, area string, force bool, repo *design.Repo, today string, ask func(model, prompt string) (string, error), model, stated string) error {
 	full, err := design.Load(root)
 	if err != nil {
 		return fmt.Errorf("a spine is written under a design: %w", err)
@@ -216,6 +217,7 @@ func spineStep(step, root, harness, area string, force bool, repo *design.Repo, 
 		if err != nil {
 			return err
 		}
+		reply, took := cutTaken(reply)
 		doc, err := splitSpine(reply, area)
 		if err != nil {
 			kept := filepath.Join(root, "design", "reverse-reply.md")
@@ -228,6 +230,9 @@ func spineStep(step, root, harness, area string, force bool, repo *design.Repo, 
 			return err
 		}
 		fmt.Printf("reverse: wrote %s\n", rel)
+		if err := keepTaken(root, rel, took); err != nil {
+			return err
+		}
 		fmt.Printf("reverse: %d place(s) are marked (inferred) and %d TODO(design): a person answers each.\n",
 			strings.Count(doc, "(inferred)"), design.Marks(doc))
 		fmt.Println("reverse: next:")

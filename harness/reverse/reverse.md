@@ -80,6 +80,16 @@ If the numbering needs a sentence, write it with no id in it, not even as the en
 range: "the ids here are those `docs/architecture.md` gave them; a gap is a rule kept in
 an area's spine, and new ones follow the highest".
 
+List in the frontmatter, under `replaces:`, the path of every existing document you
+brought a rule in from. The checker then names each one until a person has retired it,
+and the last part of your reply tells that person what you took from it and what you
+left.
+
+Do not write `rules:` in the frontmatter, and keep any that is there exactly as it is: a
+rule's check is a person's to add, once they have tried it against the history. Where
+you can see that a pattern or a command the repository already runs would prove a rule,
+say so in the rule's row under `What no machine proves yet`.
+
 The document is current state. Say nothing in it about how or when it was drafted, what
 it was drafted from, when a decision was made or amended, or what is still to be written.
 
@@ -232,10 +242,17 @@ about the method itself: that is already in the file.
 
 ## Your reply
 
-Reply with exactly these two parts and nothing before, between or after them, no
+Reply with exactly these parts, in this order, and nothing before, between or after them, no
 commentary and no code fence around either:
 
 === design/DESIGN.md ===
 (the whole document: the frontmatter between its two lines of `---`, then the body)
 === CLAUDE.md ===
 (the project's rules)
+=== What was taken ===
+(for each existing document you brought a rule in from, or read and took nothing from:
+its path as a `###` heading; under **Taken**, each rule with the id it has here; under
+**Left out**, what you did not take and why it is not a matter for a design, in a phrase
+each: a description of the code, a choice inside one file, superseded, another area's;
+then one line, **Retire** or **Cut down to** what is left. Leave this part out entirely
+if the repository had no such documents)

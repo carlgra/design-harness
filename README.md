@@ -142,8 +142,11 @@ below.
 bootstrap            adopt the method in a project that already exists
 harness/             everything that is copied into a project
   FRAMEWORK.md       the method, in full: read this first
-  cmd/check          the checker: files accounted for, named tests exist, ids land, notes have their parts;
+  cmd/check          the checker: files accounted for, named tests exist, ids land, notes have their parts,
+                     and every rule with a check is kept, apart from the breaches recorded as known;
                      -for <path> names the documents to read before changing it
+  cmd/backtest       try the design against the history: which past changes a rule would have refused,
+                     and how many stayed inside one area
   cmd/coldread       two sessions with no memory read the design, or one area's spine with it: comprehension, readiness
   cmd/reverse        reverse-engineer the design of existing code, whole or one area at a time: survey, skeleton, draft
   cmd/subject        is a commit's subject a Conventional Commit (optional, per repository)
@@ -262,6 +265,18 @@ go -C harness run ./cmd/coldread -change-file design/changes/<the note>.md -out 
 harness/safe-push                             # check, push, open the pull request; a person merges
 ```
 
+A rule the code is to be held to is stated in the design and given a check. Try it
+against the history, then adopt it with the breaches already there recorded as known:
+
+```
+go -C harness run ./cmd/backtest -forbid 'from "(\.\./)+billing/' -files 'src/**'
+                                              # which of the last 200 changes would this have refused
+go -C harness run ./cmd/check -known INV-002  # adopt it: what is there is listed and allowed, anything new is refused
+```
+
+The list only shrinks. `backtest` with no arguments also says how well the areas under
+`spines:` fit the way the code has changed.
+
 `harness/FRAMEWORK.md` is the whole method: how the document is written, what the machine
 checks and deliberately does not, how a change lands, and why a cold read advises and
 never gates.
@@ -281,8 +296,12 @@ everything else.
 
 ## What it does not do
 
-- It does not judge whether a design is good. The checker proves four small things and is
-  always right about them; everything else is read by a person.
+- It does not judge whether a design is good. The checker proves a few small things, and
+  the checks a person gave their own rules, and is always right about them; everything
+  else is read by a person.
+- A rule's check is a pattern, a path or a command. A rule about which module may import
+  which is a pattern only where imports are written as paths; otherwise it needs a
+  command of the project's own.
 - It does not let a model gate a merge, or admit anything. A cold read advises, a
   draft proposes, a person decides.
 - It reads definitions from protobuf only. A contracts repository in another format has

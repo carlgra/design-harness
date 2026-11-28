@@ -48,6 +48,12 @@ const (
 	// session's reply.
 	DesignHeader = "=== design/DESIGN.md ==="
 	RulesHeader  = "=== CLAUDE.md ==="
+	// TakenHeader opens the last part of a reply: for each document the
+	// repository already had, what the draft took from it and what it left.
+	TakenHeader = "=== What was taken ==="
+	// TakenPath is where that list is kept until a person has retired the
+	// documents it names.
+	TakenPath = "design/replaces.md"
 	// ProjectBegin and ProjectEnd bracket the part of CLAUDE.md that is the
 	// project's own, which a draft writes; everything outside is left alone.
 	ProjectBegin = "<!-- design:project:begin -->"
@@ -64,6 +70,7 @@ func main() {
 	forceFlag := fs.Bool("force", false, "replace a design/DESIGN.md that is no longer a skeleton")
 	claudeFlag := fs.String("claude", "claude", "the claude command-line tool")
 	spineFlag := fs.String("spine", "", "with skeleton, prompt or draft: the spine of this one area, as design/DESIGN.md defines it, and not the whole design")
+	rulesFlag := fs.String("rules", "", "with prompt or draft: a file of rules a person states, which the draft writes as invariants whether or not the code keeps them yet")
 	fs.Parse(os.Args[2:])
 	design.ForgetGitEnv()
 
@@ -84,6 +91,14 @@ func main() {
 		fatal(err)
 	}
 	today := time.Now().Format("2006-01-02")
+	stated := ""
+	if *rulesFlag != "" {
+		b, err := os.ReadFile(*rulesFlag)
+		if err != nil {
+			fatal(err)
+		}
+		stated = strings.TrimSpace(string(b))
+	}
 	if *spineFlag != "" {
 		var ask session.Runner
 		model := ""
@@ -94,12 +109,14 @@ func main() {
 			}
 			ask, model = session.Claude(*claudeFlag, root, "Read", "Grep", "Glob"), set.Model
 		}
-		if err := spineStep(step, root, harness, *spineFlag, *forceFlag, repo, today, ask, model); err != nil {
+		if err := spineStep(step, root, harness, *spineFlag, *forceFlag, repo, today, ask, model, stated); err != nil {
 			fatal(err)
 		}
 		return
 	}
 	s := survey(repo, parent, recentSubjects(root, 200), today)
+	s.changedTogether(root, 300)
+	s.Stated = stated
 	template, err := os.ReadFile(filepath.Join(harness, "templates", "DESIGN.md"))
 	if err != nil {
 		fatal(err)
@@ -169,6 +186,7 @@ func main() {
 		if err != nil {
 			fatal(err)
 		}
+		reply, took := cutTaken(reply)
 		doc, rules, err := split(reply)
 		if err != nil {
 			// What a session said was paid for; it is kept, not lost.
@@ -182,6 +200,9 @@ func main() {
 			fatal(err)
 		}
 		fmt.Printf("reverse: wrote %s\n", design.DocPath)
+		if err := keepTaken(root, design.DocPath, took); err != nil {
+			fatal(err)
+		}
 		// A draft may divide the code into areas. Each gets the skeleton of
 		// its spine at once, so that the checker reads what was drafted and
 		// each area has its questions waiting.
@@ -261,6 +282,7 @@ func prompt(harness, root string, s Survey, template string) (string, error) {
 	b.WriteString(strings.TrimRight(string(instructions), "\n"))
 	b.WriteString("\n\n---\n\n")
 	b.WriteString(strings.TrimSpace(s.Markdown()))
+	b.WriteString(statedRules(s.Stated))
 	b.WriteString("\n\n---\n\nThe shape to fill, with the frontmatter as the survey gives it:\n\n````markdown\n")
 	b.WriteString(strings.TrimSpace(strings.ReplaceAll(s.Skeleton(template), SkeletonMark+"\n\n", "")))
 	b.WriteString("\n````\n")
@@ -270,6 +292,63 @@ func prompt(harness, root string, s Survey, template string) (string, error) {
 		b.WriteString("\n````\n")
 	}
 	return b.String(), nil
+}
+
+// cutTaken takes the last part off a reply: what the draft took from each
+// document the repository already had. The rest is the reply as it was
+// before there was such a part.
+func cutTaken(reply string) (rest, took string) {
+	i := strings.LastIndex(reply, TakenHeader)
+	if i < 0 {
+		return reply, ""
+	}
+	return reply[:i], strings.TrimSpace(unfence(reply[i+len(TakenHeader):]))
+}
+
+// keepTaken adds what a draft of doc took to the list a person retires the
+// old documents from. The list is one file for the design and every spine,
+// a section to each; a second draft of a document replaces its section.
+func keepTaken(root, doc, took string) error {
+	if took == "" {
+		return nil
+	}
+	path := filepath.Join(root, filepath.FromSlash(TakenPath))
+	old, _ := os.ReadFile(path)
+	text := string(old)
+	if text == "" {
+		text = "# What the design took from the documents it replaces\n\n" +
+			"Written by the drafting sessions, for the person who retires the old documents:\n" +
+			"for each, what is now a rule of the design or of a spine, and what was left out\n" +
+			"as not a matter for a design. Check each list against its document, retire the\n" +
+			"document or cut it down to what was left, take it off `replaces:`, and delete\n" +
+			"this file when the last is gone.\n"
+	}
+	open, shut := "<!-- taken:"+doc+":begin -->", "<!-- taken:"+doc+":end -->"
+	section := open + "\n## From the draft of `" + doc + "`\n\n" + took + "\n" + shut + "\n"
+	if i, j := strings.Index(text, open), strings.Index(text, shut); i >= 0 && j > i {
+		text = text[:i] + section + strings.TrimLeft(text[j+len(shut):], "\n")
+	} else {
+		text = strings.TrimRight(text, "\n") + "\n\n" + section
+	}
+	if err := write(path, text); err != nil {
+		return err
+	}
+	fmt.Printf("reverse: wrote %s: what was taken from each existing document, for whoever retires them\n", TakenPath)
+	return nil
+}
+
+// statedRules is the part of a prompt that carries what a person says must
+// hold. A rule a person states is written whether the code keeps it or not:
+// the code is brought to the design, not the design read out of the code.
+func statedRules(stated string) string {
+	if stated == "" {
+		return ""
+	}
+	return "\n\n---\n\nRules a person states. Each is to hold here whether or not the code keeps it yet. " +
+		"Write every one as an invariant, in the person's meaning and as nearly their words as the format allows; " +
+		"leave none out and soften none. Then look: where the code keeps it, say what proves it; where the code " +
+		"does not keep it yet, mark it `(stated; the code is being brought to it)` and give it a row under " +
+		"`What no machine proves yet` saying where it is broken today, as far as you found.\n\n" + stated + "\n"
 }
 
 // split reads a drafting session's reply: the design after its header, and

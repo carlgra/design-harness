@@ -28,6 +28,26 @@ notes:
 # spines:
 #   - name: checkout
 #     files: [src/checkout/**]
+# The check of a rule this document states, by the id of its invariant or
+# decision: a pattern no line may match (forbid:), a pattern every file must
+# hold (require:), paths no file may be at (absent:), or a command whose
+# every line of output is a breach (run:). files: and except: say where it
+# looks. Before the day in from: it reports and refuses nothing. Breaches
+# already in the tree are recorded with `check -known`, allowed, and may only
+# shrink; `backtest` says what the check would have refused in past changes.
+# rules:
+#   - id: INV-002
+#     files: ['src/**']
+#     except: [src/billing/**]
+#     forbid: 'from "(\.\./)+billing/'
+#     from: 2027-01-01
+# The number of lines above which the checker says this document, or a
+# spine, has outgrown what is read before a change. Without it, 600.
+# size: 600
+# Documents this design took its rules from, each to be retired: the checker
+# names every one still there.
+# replaces:
+#   - docs/ARCHITECTURE.md
 {{REPOS}}
 ---
 

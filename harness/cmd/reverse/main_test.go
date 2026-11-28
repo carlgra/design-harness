@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -339,5 +340,49 @@ func TestARootsSkeletonCarriesTheMap(t *testing.T) {
 	}
 	if len(d.Repos) != 2 || d.Repos[0].Path != "billing" || d.Repos[0].Kind != "service" || d.Repos[0].Remote != "git@host:x/billing.git" || d.Repos[1].Kind != "contracts" || d.Repos[1].Remote != "" {
 		t.Errorf("the map was written as %+v", d.Repos)
+	}
+}
+
+func TestTheSurveyListsTheDirectoriesThatChangeTogether(t *testing.T) {
+	design.ForgetGitEnv()
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	for i := 0; i < 3; i++ {
+		for _, f := range []string{"src/cart/a.ts", "src/billing/b.ts"} {
+			p := filepath.Join(root, filepath.FromSlash(f))
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte(strings.Repeat("x\n", i+1)), 0o644)
+		}
+		if i == 2 {
+			os.MkdirAll(filepath.Join(root, "src/search"), 0o755)
+			os.WriteFile(filepath.Join(root, "src/search/c.ts"), []byte("x\n"), 0o644)
+		}
+		git("add", "-A")
+		git("commit", "-q", "-m", "feat: change")
+	}
+	var s Survey
+	s.changedTogether(root, 50)
+	if s.Changes != 3 || len(s.Together) == 0 || s.Together[0].A != "src/billing" || s.Together[0].B != "src/cart" || s.Together[0].Together != 3 {
+		t.Fatalf("changes %d, together %+v", s.Changes, s.Together)
+	}
+	md := s.Markdown()
+	if !strings.Contains(md, "`src/billing` and `src/cart`: 3 changes together") {
+		t.Fatalf("the survey does not say so:\n%s", md)
+	}
+	if strings.Contains(md, "src/search` and") || strings.Contains(md, "and `src/search`") {
+		t.Fatalf("a pair that changed together once is listed:\n%s", md)
+	}
+	// A repository with no history says nothing, and invents nothing.
+	var none Survey
+	none.changedTogether(t.TempDir(), 50)
+	if none.Changes != 0 || strings.Contains(none.Markdown(), "change together") {
+		t.Fatal("a repository with no history was given one")
 	}
 }

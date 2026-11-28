@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"harness/internal/design"
 )
@@ -23,6 +24,18 @@ type Result struct {
 	InSpines int // of Claimed, those an area holds
 	Orphans  []string
 	Notes    int
+	// Warnings are what the run says and does not refuse: a rule's breach
+	// before its day, a document over its size, a replaced document still
+	// there.
+	Warnings []string
+	Rules    []RuleLine
+	Sizes    []Size
+	Limit    int
+	Replaced []string
+}
+
+func (r *Result) warn(format string, args ...any) {
+	r.Warnings = append(r.Warnings, fmt.Sprintf(format, args...))
 }
 
 func (r *Result) fail(format string, args ...any) {
@@ -35,6 +48,9 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 	for _, f := range r.Failures {
 		fmt.Fprintf(w, "FAIL  %s\n", f)
 	}
+	for _, f := range r.Warnings {
+		fmt.Fprintf(w, "WARN  %s\n", f)
+	}
 	tests := len(repo.Design.Tests)
 	for _, sp := range repo.Spines {
 		tests += len(sp.Tests)
@@ -44,6 +60,8 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 	if len(repo.Spines) > 0 {
 		fmt.Fprintf(w, "harness: %d spine(s), holding %d of those files; the rest are the design's own\n", len(repo.Spines), r.InSpines)
 	}
+	r.reportRules(w)
+	r.reportSizes(w)
 	if n := unfinished(repo.Body); n > 0 {
 		fmt.Fprintf(w, "harness: %s still says %s in %d place(s): the design is not finished until a person has answered each\n", design.DocPath, Unfinished, n)
 	}
@@ -62,7 +80,11 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 // unfinished counts the marks left for a person to answer.
 func unfinished(body string) int { return design.Marks(body) }
 
-func runChecks(repo *design.Repo) *Result {
+func runChecks(repo *design.Repo) *Result { return runChecksOn(repo, time.Now()) }
+
+// runChecksOn runs the checks as of a day: a rule with a day to refuse from
+// warns before it.
+func runChecksOn(repo *design.Repo, today time.Time) *Result {
 	res := &Result{}
 	parent, err := design.FindParent(repo.Root)
 	if err != nil {
@@ -74,6 +96,9 @@ func runChecks(repo *design.Repo) *Result {
 	checkMap(repo, res)
 	checkIDs(repo, parent, res)
 	checkContracts(repo, LocateEnv(parent), res)
+	checkRules(repo, today, res)
+	checkSizes(repo, res)
+	checkReplaced(repo, res)
 	if notes, err := readNotes(repo.Root); err != nil {
 		res.fail("%s: %v", ChangesDir, err)
 	} else {

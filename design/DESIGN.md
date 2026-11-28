@@ -67,6 +67,26 @@ tests:
   - TestADraftedSpineReplacesOnlyASkeleton
   - TestEveryAreaADraftDefinesIsGivenASkeleton
   - TestTheMarksLeftForAPersonAreCountedOneWay
+  - TestAGlobReachesThroughDirectories
+  - TestABreachIsKnownByItsFileAndTextNotItsLine
+  - TestACommandsLinesAreItsBreaches
+  - TestARuleRefusesABreachThatIsNotOnItsList
+  - TestARuleOnlyWarnsBeforeItsDay
+  - TestAMendedBreachMustComeOffTheList
+  - TestRecordingNeverAddsABreachToAnExistingList
+  - TestACheckBelongsToARuleTheDocumentStates
+  - TestASpinesRuleReadsOnlyItsArea
+  - TestNoFileMayBeWhereTheRuleSaysNone
+  - TestADocumentOverItsSizeIsSaidAndNotRefused
+  - TestAReplacedDocumentStillThereIsNamed
+  - TestTheReportCarriesEachRuleAndWhatItFound
+  - TestAChangeIsACommitAgainstItsFirstParent
+  - TestAChangeThatAddsABreachWouldHaveBeenRefused
+  - TestACommandRuleIsTriedInACheckoutOfEachChange
+  - TestAreasAreScoredByTheChangesThatStayedInside
+  - TestTheSurveyListsTheDirectoriesThatChangeTogether
+  - TestWhatADraftTookFromEachDocumentIsKeptForWhoeverRetiresThem
+  - TestARuleAPersonStatesIsHandedToTheDraftInTheirWords
 # The repository's own gate, run from the root after the checks pass.
 validate: go -C harness vet ./... && go -C harness test ./...
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
@@ -75,6 +95,9 @@ commits: conventional
 # refused while it lacks a pull request, the harness check or the refusal of
 # a force push.
 protection: required
+# This document is over the size it tells others to keep, and says so here
+# until it is divided into areas (see What no machine proves yet).
+size: 1400
 # What a note under design/changes/ carries, from the date the rule began.
 notes:
   from: 2026-11-24
@@ -120,12 +143,55 @@ forgotten. It has a body, read by people and by model sessions, and YAML frontma
 read by a machine. The frontmatter says which paths hold the code (`files:`),
 which tests must exist (`tests:`), the repository's own gate (`validate:`), whether a
 commit's subject is a Conventional Commit (`commits:`), whether the server's protection
-of the default branch is read before a push (`protection:`), and what a change note
-must carry (`notes:`). Six files at a repository's root need no entry in `files:`, because
+of the default branch is read before a push (`protection:`), what a change note
+must carry (`notes:`), the checks of the rules it states (`rules:`), the size a document
+is to stay under (`size:`), and the documents it took its rules from (`replaces:`). Six files at a repository's root need no entry in `files:`, because
 they are how a repository works rather than its code: `README.md`, `CLAUDE.md`,
 `AGENTS.md`, `LICENSE` (with or without `.md` or `.txt`), `.gitignore` and
-`.gitattributes`. A glob ending `/**` is everything under a directory; any other is a
-path in which `*` does not cross a `/`.
+`.gitattributes`. A glob is matched one path element at a time: `*` does not cross a
+`/`, an element that is `**` stands for any number of directories, none included, and a
+glob ending `/**` is everything under a directory.
+
+**A rule's check** is what holds the code to a rule a person stated (ADR-0015). An
+entry under `rules:`, in the design or in a spine, names the `id:` of an invariant or a
+decision that document defines and exactly one check: `forbid:`, a regular expression
+no line may match; `require:`, one that some line of every file must match; `absent:`,
+globs no file may be under; or `run:`, a command run from the root, each line of whose
+output is a breach. `files:` and `except:` say which files a pattern reads; a design's
+check reads every file by default, a spine's never reads outside its area. A breach is
+known by its file and the text found, never its line number, so it stays the same
+breach when the lines above it move; a command's `path:line:` prefix is read and the
+line number dropped the same way. The breaches in the tree when a rule is adopted are
+written by `check -known` to `design/rules/<id>.known`, an area's to
+`design/rules/<area>/<id>.known`. The checker allows a breach on the list and refuses
+any other. An entry of the list that is no longer found is refused too, until `check
+-known` takes it off, and `check -known` never adds to a list that exists: so a list
+only shrinks, and a breach once mended cannot return. A rule with `from:` a date
+reports what it finds as warnings before that day and refuses from it. Where the
+change's merge base with the default branch can be read, an entry added to an existing
+list since then is said as a warning for whoever merges. `check -report <file>` writes
+the run as Markdown, each rule with what is new, what is known, and what the change
+mended or added, and appends the same to a GitHub job's summary where there is one.
+
+The checker also weighs each document, says the size of the design and of the largest
+spine on every run, and warns of one over `size:` lines, 600 where the design sets
+none; and it names each document under `replaces:`, the design's or a spine's, that is
+still on disk. Neither refuses.
+
+**A backtest** tries the design against the repository's own history and changes
+nothing (ADR-0016). `backtest` reads the last changes on the first-parent line of
+`HEAD`, each set against its first parent, so that a merged pull request is one change
+and so is a squashed one. For the areas under `spines:` it says how many changes
+stayed inside one area or none, how often each area changed alone, which areas changed
+together most with the latest such changes, and which directories no area holds
+changed most; with no areas defined it lists the directories that changed together. For
+each rule with a check it says how many files the check reads, which changes would have
+been refused because they added a breach, and how many breaches there were before and
+are now. A pattern is tried by reading each file a change touched before and after it; a
+command only with `-run`, in a worktree of each change that is removed afterwards.
+`-forbid` and `-require`, with `-files` and `-except`, try a pattern that is in no
+design yet. The areas and the rules are those of the design in the working tree,
+committed or not.
 
 **A spine** is the design of one area of a repository too large for one document
 (ADR-0013). The design's frontmatter divides the code into areas under `spines:`, each a
@@ -144,6 +210,14 @@ writes a spine's skeleton for an area the design already defines, and `reverse d
 -spine <area>` has one session read that area, handed the design and a survey of the
 area's files alone, and writes its reply as the spine, only over a skeleton. A draft of
 the design itself that defines areas has each one's skeleton written with it.
+`reverse survey` lists the directories that changed in the same changes, which is the
+evidence a boundary is drawn from. A draft, of the design or of a spine, is told to
+list under `replaces:` each existing document it brought a rule in from, and ends its
+reply with what it took from each and what it left; that list is kept in
+`design/replaces.md`, a section to each drafted document, for the person who retires
+them. `reverse draft -rules <file>` hands the session rules a person states, to be
+written as invariants whether or not the code keeps them yet. A drafting session writes
+no `rules:` of its own.
 
 **A cold read** is a model session with no memory, handed the document and nothing
 else.
@@ -607,6 +681,30 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   TestADraftedSpineReplacesOnlyASkeleton`, `test:
   TestEveryAreaADraftDefinesIsGivenASkeleton`)*
 
+- **INV-023** — A rule's check belongs to an id its own document defines and is exactly
+  one of the four kinds; anything else is refused, never skipped. A spine's check reads
+  no file outside its area. *(`test: TestACheckBelongsToARuleTheDocumentStates`, `test:
+  TestASpinesRuleReadsOnlyItsArea`, `test: TestNoFileMayBeWhereTheRuleSaysNone`)*
+- **INV-024** — A breach that is not on its rule's list is refused from the rule's day and
+  reported before it; one on the list is allowed. A breach is the same breach wherever
+  its line moves, and a second copy of it is a new one. *(`test:
+  TestARuleRefusesABreachThatIsNotOnItsList`, `test: TestARuleOnlyWarnsBeforeItsDay`,
+  `test: TestABreachIsKnownByItsFileAndTextNotItsLine`)*
+- **INV-025** — A list of known breaches only shrinks by the checker's hand: an entry
+  that is mended is refused until it is taken off, and recording never adds to a list
+  that exists. *(`test: TestAMendedBreachMustComeOffTheList`, `test:
+  TestRecordingNeverAddsABreachToAnExistingList`)*
+- **INV-026** — A command that fails and prints no breach could not be run, and is never
+  taken for a clean tree. *(`test: TestACommandsLinesAreItsBreaches`)*
+- **INV-027** — A backtest changes nothing in the repository: it reads git's objects, and
+  a command rule runs in a worktree it removes. A change is a commit set against its
+  first parent. *(`test: TestAChangeThatAddsABreachWouldHaveBeenRefused`, `test:
+  TestACommandRuleIsTriedInACheckoutOfEachChange`, `test:
+  TestAChangeIsACommitAgainstItsFirstParent`)*
+- **INV-028** — A document over its size and a replaced document still on disk are said
+  on every run and refuse nothing. *(`test: TestADocumentOverItsSizeIsSaidAndNotRefused`,
+  `test: TestAReplacedDocumentStillThereIsNamed`)*
+
 ## What no machine proves yet
 
 Each rule below is held by a person reading, with what would prove it and what makes
@@ -614,7 +712,10 @@ that due. None is accepted as final.
 
 | Gap | Today | Destination | Trigger |
 |---|---|---|---|
-| A design holds only what must be governed (ADR-0014) | The prompts and the documents say so; a person reads a draft for it | A size each document is held to and reported at, and a cold read asked whether each rule earns its place | The first design that a cold read passes and a person finds too long to read |
+| A design holds only what must be governed (ADR-0014) | The prompts and the documents say so, and the checker says when a document is over its size; whether each rule earns its place is read by a person | A cold read asked, rule by rule, whether it binds more than one part | The first design that is under its size and still holds rules of one function |
+| ADR-0014, in this repository | This document is twice the size it asks of others, and sets `size:` above itself | Its commands made areas, each with a spine, and `size:` taken out | The next change that adds a section to *How it works* |
+| INV-025 | An entry added to a list by hand is said as a warning and shown in the report, where the change's merge base can be read; in a clone without it nothing is said | Refused where the base can be read, and CI given the history to read it | The first list found longer than it was |
+| INV-024 | A pattern is read a line at a time, so a rule about what spans lines, or about which module imports which, needs a command | A check that reads a language's imports | The first project whose layering rule cannot be a pattern |
 | INV-005 | the command hands a session only the prompt, the design and for readiness the change, and runs it away from the project; the `claude` tool may still load a person's own global instructions and memory into it | a start-up mode of the tool that loads nothing and still uses the stored login, named in `internal/session`, with the test extended to pin it | the tool offering one |
 | INV-011 | the server's protection is read at a push, by a repository that asks, as an administrator; switched off and merged past in the server's own pages, nothing says so until the next administrator pushes, and a repository none of whose administrators push is never read | a scheduled CI job that reads it with a token an administrator stored, and fails | the first project that asks for it |
 | INV-011 | `-set` carries back the settings of a protection that are listed in *How it works*; one the server adds later is dropped by it without a word | `-set` refuses a protection holding a key it does not know | the first one lost |
@@ -1026,7 +1127,8 @@ person, an agent or a check move from one to the next.
 
 What says so: the opening of `README.md` and of `harness/FRAMEWORK.md`, the two drafting
 prompts, the templates' opening paragraphs and the rules in a project's `CLAUDE.md`.
-No machine holds a design to it yet.
+The checker says when a document is over its size and names each replaced document
+still on disk; whether a rule earns its place is read by a person.
 
 #### Alternatives rejected
 
@@ -1040,6 +1142,64 @@ No machine holds a design to it yet.
 - **Let each project choose its own format for its rules.** Then nothing learned in one
   carries to the next, and no check can be written once for all of them.
 
+### ADR-0015 — A rule a person states may carry a check, adopted with its breaches known
+
+A design's rules were read out of the code by a session, and the checker proved a fixed
+few things about any repository. Nothing let a person state a rule the code does not
+keep yet and have the code held to it, which is what governing a large codebase is. So
+an invariant or a decision may be given a check in the frontmatter, by its id: a
+pattern, a path no file may be at, or a command the repository already has. The rule
+stays in the body, in words, with its reason; the check is how it is held.
+
+A rule coming into force in a tree that already breaks it does one thing: the breaches
+that are there are recorded as a list beside the design, the checker allows those and
+refuses every other, and the list only shrinks. A rule may also name a day, and before
+it reports what it finds and refuses nothing, so that it can be seen working before it
+stops anyone. What each run found, rule by rule, is written as a report a pull request
+or a CI job carries.
+
+A check belongs to an id the document defines, so that every refusal names a rule a
+person can read, and a spine's check reads its own area only. A drafting session writes
+no checks: a pattern nobody tried is noise, and the backtest is how one is tried.
+
+#### Alternatives rejected
+
+- **Hold only the files changed after a date**, as notes are held. A file touched for
+  another reason would then fail for breaches it always had, and an untouched file's
+  breach could be copied freely.
+- **Refuse everything until the tree is clean.** A rule could then never be adopted in a
+  large repository, which is where rules are needed.
+- **Key a known breach by its line number.** Every edit above it would make it new.
+- **A plugin a project writes in Go, compiled into the checker.** The harness is replaced
+  whole on update (ADR-0005); a project's own checks are its own commands, run through
+  `run:`.
+- **Warnings with no day.** A rule that only ever warns is not held; the day is what makes
+  the warning a notice.
+
+### ADR-0016 — A rule and a boundary are tried against the history before they are adopted
+
+A rule adopted blind is found too strict or too loose afterwards, and an area drawn by
+looking at directories may be one no change ever stays inside. The repository's history
+is the evidence for both, and it is already there. `backtest` reads it and changes
+nothing: for each rule's check, the past changes that added a breach, which are the ones
+it would have refused; for the areas, the share of changes that stayed inside one. It
+reads the design in the working tree, so the thing tried is the thing proposed, and it
+uses the same code as the checker to find a breach, so the rule tried is the rule held.
+
+A change is a commit on the first-parent line set against its first parent. That makes a
+merged pull request one change and a squashed one one change, which is the unit a rule
+refuses and an area is meant to contain.
+
+#### Alternatives rejected
+
+- **Check out each past commit and run the checker.** Right for a command, and offered
+  with `-run`; for a pattern it reads the whole tree thousands of times to learn what the
+  files a change touched already say.
+- **Judge the areas by the tree alone**, sizes and imports. That says how the code is
+  laid out, not how it changes, and an area is defined by change.
+- **Place each past file by the design as it was then.** There was none, or another; the
+  question is whether today's boundaries and rules would have held.
+
 ## Files
 
 | File | Purpose |
@@ -1048,11 +1208,14 @@ No machine holds a design to it yet.
 | `harness/FRAMEWORK.md` | The method, written for whoever works in a project that uses it. Its presence is how `bootstrap` knows a `harness/` is this one. |
 | `harness/go.mod`, `harness/go.sum` | The harness's own module, `harness`, with one dependency (ADR-0005). |
 | `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files. |
+| `harness/internal/rules/` | A rule's check (ADR-0015): compiles the entries under `rules:`, finds breaches in a file's content or a command's output, reads and writes the lists of known breaches, and sets one against the other. The checker and the backtest both find a breach through it. |
+| `harness/internal/history/` | Past changes from git (ADR-0016): each first-parent commit with the paths it touched, a file as it was at a commit, and how often groups of paths changed together. |
 | `harness/internal/session/` | Starts a model session through the `claude` tool with exactly the tools it is given; reads a settings file. |
 | `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007). |
-| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. |
+| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. `rules.go` runs the checks of rules (ADR-0015), records known breaches for `-known`, weighs the documents, names the replaced ones still there, and writes the report for `-report`. |
+| `harness/cmd/backtest/` | The backtest (ADR-0016): `areas.go` scores the areas against past changes, `rules.go` tries each check against them, `report.go` says what was found, as text and as Markdown. |
 | `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
-| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. |
+| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. `main.go` also keeps what a draft took from each existing document in `design/replaces.md`, and hands a draft the rules a person states with `-rules`. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
 | `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the frontmatter's `protection:`, the `gh` tool and what is printed. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
@@ -1123,3 +1286,23 @@ Paths a fault would travel, and the test that walks each:
 - a drafted spine does not replace one a person took on, and a reply that is no spine is kept — `TestADraftedSpineReplacesOnlyASkeleton`
 - every area a drafted design defines has a spine at once, and one that was there is kept — `TestEveryAreaADraftDefinesIsGivenASkeleton`
 - the checker and the drafting command give one number for the marks left in a document — `TestTheMarksLeftForAPersonAreCountedOneWay`
+- a glob reaches through any number of directories and no further than it says — `TestAGlobReachesThroughDirectories`
+- a breach that moved is the same breach, and a second copy is new — `TestABreachIsKnownByItsFileAndTextNotItsLine`
+- a command that failed and printed nothing is not a clean tree — `TestACommandsLinesAreItsBreaches`
+- a breach not on the rule's list is refused, and one on it is allowed — `TestARuleRefusesABreachThatIsNotOnItsList`
+- a rule before its day reports and does not refuse — `TestARuleOnlyWarnsBeforeItsDay`
+- a mended breach left on the list is refused until it is taken off — `TestAMendedBreachMustComeOffTheList`
+- recording over a list that exists adds nothing to it — `TestRecordingNeverAddsABreachToAnExistingList`
+- a check of an id the document does not define, or of no one kind, is refused — `TestACheckBelongsToARuleTheDocumentStates`
+- a spine's check reads no other area — `TestASpinesRuleReadsOnlyItsArea`
+- a file where the rule says none may be is refused — `TestNoFileMayBeWhereTheRuleSaysNone`
+- a document over its size is said and not refused — `TestADocumentOverItsSizeIsSaidAndNotRefused`
+- a replaced document still on disk is named — `TestAReplacedDocumentStillThereIsNamed`
+- the report carries each rule, what it found and what was refused — `TestTheReportCarriesEachRuleAndWhatItFound`
+- a merged pull request is one change, set against its first parent — `TestAChangeIsACommitAgainstItsFirstParent`
+- a past change that added a breach is named as one the rule would have refused, and nothing is changed — `TestAChangeThatAddsABreachWouldHaveBeenRefused`
+- a command rule is tried only when asked, in a checkout that is removed — `TestACommandRuleIsTriedInACheckoutOfEachChange`
+- areas are scored by the changes that stayed inside one — `TestAreasAreScoredByTheChangesThatStayedInside`
+- the survey lists the directories that changed together, and none for a repository with no history — `TestTheSurveyListsTheDirectoriesThatChangeTogether`
+- what a draft took from each existing document is kept, one section to a drafted document — `TestWhatADraftTookFromEachDocumentIsKeptForWhoeverRetiresThem`
+- a rule a person states reaches the drafting session in their words — `TestARuleAPersonStatesIsHandedToTheDraftInTheirWords`

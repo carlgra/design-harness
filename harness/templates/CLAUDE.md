@@ -25,7 +25,12 @@ Read `README.md`, then `design/DESIGN.md`. The method this repository works by i
    or renamed. Tuning a value a decision already constrains is code. Only what
    must be governed goes in the design: a choice inside one function or file, which
    whoever edits it can see and change safely, stays in the code.
-5. **Anything found and not finished is an issue before the conversation ends**, with what
+5. **A rule's breach is mended, never listed.** Where the checker refuses a breach of a
+   rule (`rules:` in the design or a spine), change the code. The lists under
+   `design/rules/` hold the breaches that were there when a rule was adopted and only
+   shrink: never add a line to one, and when you mend a listed breach run
+   `go -C harness run ./cmd/check -known` to take it off.
+6. **Anything found and not finished is an issue before the conversation ends**, with what
    was seen and what it needs.
 
 ## Before you build

@@ -45,7 +45,7 @@ func step(t *testing.T, name, root, harness, area string, force bool, reply stri
 		t.Fatal(err)
 	}
 	ask := func(model, prompt string) (string, error) { return reply, nil }
-	return spineStep(name, root, harness, area, force, repo, "2026-01-31", ask, "m")
+	return spineStep(name, root, harness, area, force, repo, "2026-01-31", ask, "m", "")
 }
 
 // A spine's skeleton is the first document of an area the design already
@@ -154,5 +154,56 @@ func TestEveryAreaADraftDefinesIsGivenASkeleton(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(root, "design/spines/cart.md")); !strings.Contains(string(b), SkeletonMark) {
 		t.Fatal("the missing spine was not written as a skeleton")
+	}
+}
+
+func TestWhatADraftTookFromEachDocumentIsKeptForWhoeverRetiresThem(t *testing.T) {
+	reply := DesignHeader + "\n---\nfiles: [src/**]\nreplaces: [docs/ARCHITECTURE.md]\n---\n\n# shop\n" +
+		RulesHeader + "\nBuild with make.\n" +
+		TakenHeader + "\n### docs/ARCHITECTURE.md\n\n**Taken**\n- layering, as INV-002\n\n**Retire**\n"
+	rest, took := cutTaken(reply)
+	doc, rules, err := split(rest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(doc, "Taken") || strings.Contains(rules, "Taken") || rules != "Build with make." {
+		t.Fatalf("the list leaked into the design or the rules:\n%s\n---\n%s", doc, rules)
+	}
+	if !strings.HasPrefix(took, "### docs/ARCHITECTURE.md") {
+		t.Fatalf("took: %q", took)
+	}
+	root := t.TempDir()
+	if err := keepTaken(root, design.DocPath, took); err != nil {
+		t.Fatal(err)
+	}
+	if err := keepTaken(root, "design/spines/cart.md", "### docs/cart.md\n\n**Retire**"); err != nil {
+		t.Fatal(err)
+	}
+	// A second draft of the design replaces its own section and no other.
+	if err := keepTaken(root, design.DocPath, "### docs/ARCHITECTURE.md\n\n**Cut down to** the glossary"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, filepath.FromSlash(TakenPath)))
+	got := string(b)
+	if strings.Contains(got, "layering, as INV-002") || !strings.Contains(got, "the glossary") || !strings.Contains(got, "### docs/cart.md") {
+		t.Fatalf("the list is not one section to a document, the latest of each:\n%s", got)
+	}
+	if strings.Count(got, "# What the design took") != 1 {
+		t.Fatalf("the heading is repeated:\n%s", got)
+	}
+	// A reply with no such part is the reply it always was.
+	if rest, took := cutTaken(DesignHeader + "\nx"); took != "" || rest != DesignHeader+"\nx" {
+		t.Fatalf("rest %q took %q", rest, took)
+	}
+}
+
+func TestARuleAPersonStatesIsHandedToTheDraftInTheirWords(t *testing.T) {
+	said := "Nothing outside billing reads the ledger table."
+	got := statedRules(said)
+	if !strings.Contains(got, said) || !strings.Contains(got, "whether or not the code keeps it yet") {
+		t.Fatalf("the prompt does not carry the rule as stated:\n%s", got)
+	}
+	if statedRules("") != "" {
+		t.Fatal("a draft with no stated rule is told of some")
 	}
 }

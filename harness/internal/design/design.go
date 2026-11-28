@@ -54,6 +54,47 @@ type Design struct {
 	// design/spines/<name>.md, so that whoever changes one area reads this
 	// document and that one, and none of the others.
 	Spines []Area `yaml:"spines"`
+	// Rules are the checks a person has given an invariant or a decision of
+	// this document, by its id: what the checker runs to hold the code to it.
+	Rules []Rule `yaml:"rules"`
+	// Size is the number of lines above which the checker says a document,
+	// this one or a spine, has outgrown what is read before a change. Zero is
+	// DefaultSize.
+	Size int `yaml:"size"`
+	// Replaces are the documents this design took its rules from. Each is to
+	// be retired once the design holds what it said; the checker names every
+	// one still there.
+	Replaces []string `yaml:"replaces"`
+}
+
+// DefaultSize is the number of lines a document may reach before the checker
+// says so, where the design sets no size: of its own.
+const DefaultSize = 600
+
+// Rule is one check of a rule the document states: the id of the invariant or
+// decision it holds the code to, where it looks, and exactly one of a pattern
+// no line may match, a pattern every file must hold, paths no file may be
+// at, or a command.
+type Rule struct {
+	// ID is the invariant or decision checked, as this document defines it.
+	ID string `yaml:"id"`
+	// Files are the globs read; none is everything the document accounts
+	// for. Except are globs left out of them.
+	Files  []string `yaml:"files"`
+	Except []string `yaml:"except"`
+	// Forbid is a regular expression: a line that matches it is a breach.
+	Forbid string `yaml:"forbid"`
+	// Require is a regular expression: a file with no line that matches it
+	// is a breach.
+	Require string `yaml:"require"`
+	// Absent are globs no file may be under: a file that is, is a breach.
+	Absent []string `yaml:"absent"`
+	// Run is a command, run from the repository's root: each line it prints
+	// is a breach.
+	Run string `yaml:"run"`
+	// From is the day the rule starts to refuse. Before it, what the rule
+	// finds is reported and nothing is refused. Empty refuses now.
+	From string `yaml:"from"`
 }
 
 // Area is one part of the code the design sets apart, by name and by the
@@ -78,8 +119,12 @@ type Spine struct {
 	Files []string // the area's globs, as the design gives them
 	// Tests are names that must appear in a test file under Files.
 	Tests []string
-	Body  string // the document after its frontmatter
-	Doc   string // the whole document, as a session is handed it
+	// Rules are the checks of the spine's own rules, read within the area.
+	Rules []Rule
+	// Replaces are the documents the spine took its rules from.
+	Replaces []string
+	Body     string // the document after its frontmatter
+	Doc      string // the whole document, as a session is handed it
 	// Err is why the document could not be read; nil when it was.
 	Err error
 }
@@ -87,6 +132,9 @@ type Spine struct {
 // spineHead is the frontmatter of a spine.
 type spineHead struct {
 	Tests []string `yaml:"tests"`
+	Rules []Rule   `yaml:"rules"`
+	// Replaces are the documents this spine took its rules from.
+	Replaces []string `yaml:"replaces"`
 }
 
 // loadSpines reads the spine of every area the design defines, and records
@@ -106,7 +154,7 @@ func (r *Repo) loadSpines() {
 			if err := yaml.Unmarshal([]byte(fm.YAML), &h); err != nil {
 				sp.Err = fmt.Errorf("frontmatter: %w", err)
 			}
-			sp.Tests, sp.Body, sp.Doc = h.Tests, fm.Body, string(b)
+			sp.Tests, sp.Rules, sp.Replaces, sp.Body, sp.Doc = h.Tests, h.Rules, h.Replaces, fm.Body, string(b)
 		}
 		r.Spines = append(r.Spines, sp)
 	}
@@ -590,15 +638,39 @@ func Claimed(globs []string, f string) bool {
 	return false
 }
 
-// MatchGlob supports a trailing /** for "everything under this directory" and
-// otherwise path.Match semantics, in which * does not cross a /.
+// MatchGlob matches a path against a glob, segment by segment: within a
+// segment path.Match semantics, in which * does not cross a /, and a segment
+// that is ** stands for any number of directories, none included. A trailing
+// /** is everything under the directory, and the directory itself.
 func MatchGlob(g, f string) bool {
-	if strings.HasSuffix(g, "/**") {
-		dir := strings.TrimSuffix(g, "/**")
-		return f == dir || strings.HasPrefix(f, dir+"/")
+	if strings.HasSuffix(g, "/**") && f == strings.TrimSuffix(g, "/**") {
+		return true
 	}
-	ok, _ := filepath.Match(filepath.FromSlash(g), filepath.FromSlash(f))
-	return ok
+	return matchSegments(strings.Split(g, "/"), strings.Split(f, "/"))
+}
+
+func matchSegments(g, f []string) bool {
+	for len(g) > 0 {
+		if g[0] == "**" {
+			if len(g) == 1 {
+				return len(f) > 0
+			}
+			for i := 0; i <= len(f); i++ {
+				if matchSegments(g[1:], f[i:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if len(f) == 0 {
+			return false
+		}
+		if ok, _ := filepath.Match(g[0], f[0]); !ok {
+			return false
+		}
+		g, f = g[1:], f[1:]
+	}
+	return len(f) == 0
 }
 
 // IsTestFile recognises the test-file conventions of Go, Python, Rust's

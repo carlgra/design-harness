@@ -8,6 +8,8 @@
 //	go -C harness run ./cmd/check
 //	go -C harness run ./cmd/check -validate=false   # the checks only
 //	go -C harness run ./cmd/check -for src/cart     # which documents to read before changing these paths
+//	go -C harness run ./cmd/check -known INV-007    # adopt a rule: record the breaches now in the tree as known
+//	go -C harness run ./cmd/check -report out.md    # the run as a report a pull request can carry
 //
 // The pre-push hook and safe-push run it before every push; CI runs it as the
 // status check main requires. Everything it does not check is read by a
@@ -29,6 +31,8 @@ func main() {
 	rootFlag := flag.String("root", "", "repository root (default: walk up from the working directory to the first directory holding design/DESIGN.md)")
 	validateFlag := flag.Bool("validate", true, "run the design's validate: command after the checks pass")
 	forFlag := flag.Bool("for", false, "print the design documents to read before changing the paths given, and check nothing")
+	knownFlag := flag.Bool("known", false, "bring each rule's list of known breaches in line with the tree: a rule with no list is given one, a list loses what is mended and gains nothing; name rules to pick them")
+	reportFlag := flag.String("report", "", "write the run as a Markdown report to this file, for a pull request to carry")
 	flag.Parse()
 	design.ForgetGitEnv()
 
@@ -48,8 +52,18 @@ func main() {
 		return
 	}
 
+	if *knownFlag {
+		if err := recordKnown(repo, flag.Args(), os.Stdout); err != nil {
+			fatal(err)
+		}
+		return
+	}
+
 	res := runChecks(repo)
 	res.report(os.Stdout, repo)
+	if err := writeReport(res.Markdown(repo), *reportFlag); err != nil {
+		fmt.Fprintln(os.Stderr, "harness: the report:", err)
+	}
 	if res.failed() {
 		os.Exit(1)
 	}

@@ -104,7 +104,7 @@ How it is written:
 ---
 files:                 # the code this design accounts for
   - cmd/**             #   a trailing /** is everything under a directory
-  - internal/**
+  - internal/**        #   ** as a path element is any number of directories
   - go.mod             #   otherwise a path, in which * does not cross a /
 tests:                 # tests that must exist, by name
   - TestAnEmptyCartIsRefused
@@ -114,6 +114,15 @@ protection: required   # the server's protection of main is read before every pu
 notes:                 # what a note under design/changes/ carries
   from: 2026-01-31     #   notes dated before this are never reread
   sections: [Problem, Plan, Alternatives rejected, Files]
+rules:                 # the check of a rule this document states (optional); see below
+  - id: INV-002
+    files: ['src/**']
+    except: [src/billing/**]
+    forbid: 'from "(\.\./)+billing/'
+    from: 2027-01-01   #   before this day it reports; from it, it refuses
+size: 600              # lines above which the checker says a document is too long (optional)
+replaces:              # documents the design took its rules from, to be retired (optional)
+  - docs/ARCHITECTURE.md
 ---
 ```
 
@@ -180,6 +189,66 @@ large repository, proposes the areas and writes each one's skeleton.
 
 A repository with no `spines:` is one document, and nothing above applies to it.
 
+## Rules: stating one, trying it, adopting it
+
+A design's first rules are read out of the code. The ones that matter most are often
+the ones the code does not keep yet: a person states them, and the code is brought to
+them. A rule is written where every rule is, as an invariant or a decision in the body,
+in words, with its reason. What holds the code to it is a check under `rules:`, by the
+rule's id, in the design or in the spine that states it:
+
+| Check | A breach is |
+|---|---|
+| `forbid: <regular expression>` | a line that matches |
+| `require: <regular expression>` | a file with no line that matches |
+| `absent: [globs]` | a file under one of them |
+| `run: <command>` | a line the command prints; the repository's own linter, say |
+
+`files:` and `except:` say which files a pattern reads. A spine's check reads its own
+area only. A command should print `path:line: what is wrong`; the line number is not
+part of what a breach is known by, so a breach stays the same breach as the file
+changes around it.
+
+**Try it first.** Before anyone is held to a rule, ask what it would have refused:
+
+```
+go -C harness run ./cmd/backtest -forbid 'from "(\.\./)+billing/' -files 'src/**' -except 'src/billing/**'
+go -C harness run ./cmd/backtest -rule INV-002      # once it is in the design
+```
+
+It reads the last 200 changes (`-n` for more) and says which of them added a breach,
+with the lines, how many files the check reads, and how many breaches there were before
+and are now. A rule that would have refused a quarter of the changes is how the code is
+written, not a rule the code keeps. A rule that reads no file, or found nothing ever,
+may be checking nothing. Adjust the pattern, or `except:`, until what it catches is
+what you mean.
+
+**Adopt it with what is there known.** A large repository already breaks a new rule in
+many places. Record them:
+
+```
+go -C harness run ./cmd/check -known INV-002
+```
+
+writes `design/rules/INV-002.known`, one breach to a line. From then on the checker
+allows those and refuses every other. The list only shrinks: when a breach is mended
+the checker refuses until it is taken off the list, with `check -known` again, and
+`check -known` never adds one. So the rule holds for every new line from the first day,
+and the old breaches are a list that is worked down and cannot grow back.
+
+**Warn first, if you like.** `from: 2027-01-01` on a check makes it report until that
+day and refuse from it.
+
+**See what it finds.** Every run prints a line to a rule: new, known, in force or
+warning. `check -report <file>` writes the same as Markdown for a pull request, and in
+a GitHub workflow the report is the job's summary without being asked.
+
+The same command scores the areas. With `spines:` defined, `backtest` says how many
+past changes stayed inside one area, which areas keep changing together, and which
+directories no area holds change most. An area is a part a change can stay inside; if
+two areas move together more often than not, they are one area, or they share a rule
+that belongs in the design.
+
 ## What the machine checks, and what it does not
 
 `go -C harness run ./cmd/check` refuses, with a line saying what and where:
@@ -193,7 +262,14 @@ A repository with no `spines:` is one document, and nothing above applies to it.
    *(where the design defines areas)* an area with no spine or a spine with no area, a
    file under two areas, a test a spine names that is not in its area, and a citation of
    another document's id that the document does not define;
-4. a note, dated from `notes: from:`, that lacks one of its sections or leaves one empty.
+4. a note, dated from `notes: from:`, that lacks one of its sections or leaves one empty;
+5. *(where a rule has a check)* a breach that is not on the rule's list, from the rule's
+   day; an entry of the list that is mended and still listed; and a check that names an
+   id its document does not define.
+
+It says, and does not refuse: a breach before its rule's day, a document over `size:`
+lines (600 where the design sets none), an entry added to a list of known breaches in
+this change, and a document under `replaces:` that is still on disk.
 
 Then it runs `validate:`. There are always two fixes: amend the design, or change the
 code.
@@ -256,6 +332,22 @@ A repository that existed before the method has a design; it is only not written
 | `reverse skeleton` | Writes `design/DESIGN.md` with frontmatter that accounts for every file as it stands, so the checker passes at once, and a body whose every section is a question. | Nothing: `validate:` and `commits:` are written as comments. |
 | `reverse draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
 | a person | Reads every line. Answers each `(inferred)` and each `TODO(design)`. Switches on `validate:`. | Everything. |
+
+`reverse draft -rules <file>` hands the session rules you state, in your words: each is
+written as an invariant whether or not the code keeps it yet, and marked where it does
+not. The survey lists the directories that changed in the same changes, which is what
+an area's boundary is drawn from. A session writes no `rules:` checks: those are yours
+to add, once tried.
+
+Where the repository already has architecture documents, standing rules or decision
+records, the draft brings what they govern into the design, lists each such document
+under `replaces:`, and ends with what it took from each and what it left, kept in
+`design/replaces.md`. Adoption is finished when a person has checked that list, retired
+each old document or cut it down to what the design does not hold, and emptied
+`replaces:`; until then the checker names every one still there. The same holds for a
+practice of writing a proposal for each change: from `notes: from:` the record of a
+change is its note under `design/changes/`, and the adoption note says what it
+replaces.
 
 `reverse prompt` prints what the drafting session is handed, to give to an agent of your
 own instead.
@@ -356,6 +448,10 @@ harness and sets all of the above up, then prints the entry to add to the root's
 ```
 go -C harness run ./cmd/check                    # the checks, then the repository's own gate
 go -C harness run ./cmd/check -validate=false    # the checks only
+go -C harness run ./cmd/check -known INV-002     # adopt a rule: record the breaches in the tree as known
+go -C harness run ./cmd/check -report out.md     # the run as a report for a pull request
+go -C harness run ./cmd/backtest                 # the areas and every rule, against the last 200 changes
+go -C harness run ./cmd/backtest -forbid '...' -files 'src/**'   # a rule not yet written down
 go -C harness run ./cmd/coldread -change "..."   # two fresh sessions read the design
 go -C harness run ./cmd/coldread -only comprehension
 go -C harness run ./cmd/reverse survey          # what a machine can see
