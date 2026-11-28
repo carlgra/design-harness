@@ -18,8 +18,9 @@
 //
 // The survey decides nothing. The draft is a session that can read the
 // repository and write nothing: this command writes what it replies, to
-// design/DESIGN.md and to the project's section of CLAUDE.md, and only over a
-// skeleton unless -force is given. What the session could not find in the
+// design/DESIGN.md and to the project's section of CLAUDE.md, or of AGENTS.md
+// where CLAUDE.md only points at it, and only over a skeleton unless -force
+// is given. What the session could not find in the
 // repository it marks "(inferred)" or TODO(design), and a person answers
 // each before the design is the design. The model is in
 // harness/reverse/reverse.yaml; the prompt is beside it.
@@ -43,7 +44,7 @@ import (
 const (
 	// SkeletonMark is the line a skeleton carries and a design does not: a
 	// draft may replace a document that has it.
-	SkeletonMark = "<!-- design:skeleton -->"
+	SkeletonMark = design.SkeletonMark
 	// DesignHeader and RulesHeader open the two parts of a drafting
 	// session's reply.
 	DesignHeader = "=== design/DESIGN.md ==="
@@ -54,8 +55,9 @@ const (
 	// TakenPath is where that list is kept until a person has retired the
 	// documents it names.
 	TakenPath = "design/replaces.md"
-	// ProjectBegin and ProjectEnd bracket the part of CLAUDE.md that is the
-	// project's own, which a draft writes; everything outside is left alone.
+	// ProjectBegin and ProjectEnd bracket the part of the rules file that is
+	// the project's own, which a draft writes; everything outside is left
+	// alone.
 	ProjectBegin = "<!-- design:project:begin -->"
 	ProjectEnd   = "<!-- design:project:end -->"
 )
@@ -152,9 +154,19 @@ func main() {
 		fmt.Printf("reverse: next, draft it:  go -C %s run ./cmd/reverse draft\n", s.HarnessPath())
 
 	case "where":
-		// Where the repository sits, for a script to read: one key=value a
-		// line. bootstrap uses it to write a CI workflow that checks out
-		// what the checker will need.
+		// What a script needs to know of the repository: one key=value a
+		// line. bootstrap reads it for the file the rules go in, and to
+		// write a CI workflow that checks out what the checker will need.
+		rules, why := RulesFile(root)
+		fmt.Printf("rules=%s\n", rules)
+		if why != "" {
+			fmt.Printf("rules_because=%s\n", why)
+		}
+		if label, check := RunsOn(root); label != "" {
+			fmt.Printf("runs_on=%s\n", label)
+		} else if check != "" {
+			fmt.Printf("runs_on_check=%s\n", check)
+		}
 		if parent != nil {
 			fmt.Printf("root=%s\npath=%s\n", parent.Name, parent.Path)
 		}
@@ -264,7 +276,7 @@ func replaceableAt(docPath, name string, force bool) error {
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(string(b), SkeletonMark) {
+	if !design.IsSkeleton(string(b)) {
 		return fmt.Errorf("%s is no longer a skeleton, so a draft would replace a design someone wrote; -force replaces it", name)
 	}
 	return nil
@@ -400,7 +412,17 @@ func unfence(s string) string {
 	return t[nl+1 : len(t)-len(fence)]
 }
 
-// project puts the project's rules into CLAUDE.md between the two marks,
+// writeProject writes the project's rules into the file that holds the
+// repository's standing instructions, the one bootstrap put the method's
+// rules in, and says which it was.
+func writeProject(root, rules string) (string, error) {
+	file, _ := RulesFile(root)
+	p := filepath.Join(root, file)
+	old, _ := os.ReadFile(p)
+	return file, write(p, project(string(old), rules))
+}
+
+// project puts the project's rules into that file between the two marks,
 // replacing what was between them and nothing else; a file without the marks
 // has them added at its end.
 func project(old, rules string) string {

@@ -195,6 +195,12 @@ func TestADraftNeverReplacesADesignSomeoneWrote(t *testing.T) {
 	if err := replaceable(p, true); err != nil {
 		t.Errorf("-force was refused: %v", err)
 	}
+	// A design that speaks of the mark, as the design of a harness does, is
+	// not a skeleton for it.
+	os.WriteFile(p, []byte("---\nfiles: []\n---\n\n# x\n\nA skeleton carries the comment `"+SkeletonMark+"`.\n"), 0o644)
+	if err := replaceable(p, false); err == nil {
+		t.Error("a design that mentions the skeleton's mark was replaceable")
+	}
 }
 
 // The project's rules go between their two marks in CLAUDE.md, and nothing

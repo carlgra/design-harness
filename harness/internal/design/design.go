@@ -37,6 +37,10 @@ type Design struct {
 	// Commits is the convention a commit's subject follows here; the only
 	// one is "conventional". Empty binds nothing.
 	Commits string `yaml:"commits"`
+	// Branches is a regular expression the whole of a change branch's name
+	// must match for safe-push to push it. Empty is feat/<what> or
+	// fix/<what>.
+	Branches string `yaml:"branches"`
 	// Protection asks for the server's protection of the default branch to
 	// be read before every push; the only value is "required". Empty reads
 	// nothing.
@@ -199,8 +203,9 @@ type Served struct {
 type RepoEntry struct {
 	// Path is where it is checked out, relative to the root.
 	Path string `yaml:"path"`
-	// Kind says what it is, in the root's own words: service, contracts,
-	// platform. Nothing in the harness gives a kind meaning yet.
+	// Kind says what it is, in the root's own words: service, platform. The
+	// harness gives meaning to one, contracts: the repository that holds the
+	// definitions the others talk through.
 	Kind string `yaml:"kind"`
 	// Remote is where it is cloned from. Empty means it is local only.
 	Remote string `yaml:"remote"`
@@ -559,6 +564,22 @@ func IsDir(p string) bool {
 const Unfinished = "TODO(design)"
 
 var inlineCode = regexp.MustCompile("`[^`\\n]*`")
+
+// SkeletonMark is the line a skeleton carries and a design does not: the
+// document is still as the harness wrote it, every section a question.
+const SkeletonMark = "<!-- design:skeleton -->"
+
+// IsSkeleton reports whether a document, a design or a spine, is still a
+// skeleton: it carries the mark on a line of its own. The mark spoken of in
+// a sentence, as a design of the harness itself speaks of it, is not one.
+func IsSkeleton(doc string) bool {
+	for _, line := range strings.Split(doc, "\n") {
+		if strings.TrimSpace(line) == SkeletonMark {
+			return true
+		}
+	}
+	return false
+}
 
 // Marks counts the marks left for a person in a document: in its body, not
 // its frontmatter, and not a mark written as code, between backticks, which

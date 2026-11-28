@@ -31,6 +31,7 @@ memory too.
 ```
 README.md            what this is and why it exists
 CLAUDE.md            how an agent works here: the rules, and the project's own
+                     (in AGENTS.md, where CLAUDE.md only points at it)
 design/DESIGN.md     the design, with its frontmatter
 design/spines/       in a large repository: one document per area of the code, its spine
 design/changes/      one short note per change: problem, plan, alternatives, files
@@ -81,6 +82,8 @@ How it is written:
 - **Ids are kept for life.** A decision is `ADR-0007`, an invariant `INV-012`, and each
   keeps its number however much its text changes, so that a citation always lands. A
   retired id is never reused. Another repository's is cited by name: `platform/ADR-0029`.
+  The form is the name, a slash and the id, with nothing between: `platform ADR-0029`,
+  with a space, is read as this design's own id, and refused if it defines none.
 - **A decision states a constraint, never a value.** Where it depends on a number or a
   string, it says what the value must satisfy and names the file the value lives in.
   Tuning the value is then a code change, and the design does not go stale.
@@ -110,6 +113,7 @@ tests:                 # tests that must exist, by name
   - TestAnEmptyCartIsRefused
 validate: make test    # the repository's own gate, run after the checks pass (optional)
 commits: conventional  # a commit's subject is a Conventional Commit (optional)
+branches: '[A-Z]+-[0-9]+/.+'  # how a change branch is named, if not feat/ or fix/ (optional)
 protection: required   # the server's protection of main is read before every push (optional)
 notes:                 # what a note under design/changes/ carries
   from: 2026-01-31     #   notes dated before this are never reread
@@ -130,6 +134,11 @@ replaces:              # documents the design took its rules from, to be retired
 root need no entry, and nothing under `design/` does. What git ignores is not looked at.
 A repository asks more of its notes by adding a heading to `sections:`, for instance
 `What existing data changes meaning` where a change can alter what stored data means.
+`branches:` is a regular expression, and a change branch's whole name must match it: the
+one above accepts `SHOP-12/a-fourth-line` and refuses `feat/a-fourth-line`. `safe-push`
+pushes a branch named so and no other. Work it finds on `main` or a stray branch it moves
+to a name it can build that matches, and where it can build none it stops and says what
+to type.
 
 ## Spines: a large repository, one area at a time
 
@@ -276,6 +285,12 @@ this change, and a document under `replaces:` that is still on disk.
 Then it runs `validate:`. There are always two fixes: amend the design, or change the
 code.
 
+It also says two things without refusing: how many places a design still says
+`TODO(design)`, and, under a root, that the contracts rules are off when no entry of
+the root's map has `kind: contracts` and a design has `serves:`, a note has a `servers`
+block, or a listed repository holds `.proto` files. A test that `serves:` names must
+exist either way.
+
 That is all. It does not judge whether the design is good, whether a decision's reason
 holds, or whether a test proves what its name says. Those are read by a person at review,
 with a cold read's help. A small check that is always right is trusted; a large one that
@@ -288,7 +303,8 @@ is sometimes wrong is switched off.
 2. **Write the note.** `design/changes/<date>-<slug>.md`, from
    `harness/templates/change.md`: the problem, the plan, the alternatives rejected, and
    the files to change and why. Short. It is kept.
-3. **Branch.** `feat/<what>` or `fix/<what>`. Never commit on `main`.
+3. **Branch.** `feat/<what>` or `fix/<what>`, or as the frontmatter's `branches:` says.
+   Never commit on `main`.
 4. **Make the design say what will be true**, then make the code agree with it. A new file
    goes under a glob in `files:`. A new rule gets an invariant and the test that proves
    it, named in `tests:`.
@@ -314,6 +330,12 @@ Two questions, each put to its own fresh session with no tools, handed the promp
 Each ends its reply with `VERDICT: PASS` or `VERDICT: FAIL`. The script reads that line
 and judges nothing itself.
 
+A document that is not yet a design is refused before any session is started: a
+skeleton nobody has drafted, one whose frontmatter accounts for no files, or one with no
+section for what must always hold, for decisions or for files. The command says which
+it found and what to do first. A draft with `TODO(design)` still in it is a design, and
+is read.
+
 **It is advice, not a gate.** A FAIL is a list of what the document does not say. Most of
 the time the right response is to mend the document and ask again; sometimes the session
 is wrong, and the person who merges says so. The verdicts go on the pull request for that
@@ -332,7 +354,7 @@ A repository that existed before the method has a design; it is only not written
 |---|---|---|
 | `reverse survey` | Lists what a machine can see: the files and the globs that account for them, languages, test files and names, the command the repository proves itself with, the documents that may record decisions, CI, whether the history follows a commit convention. | Nothing. |
 | `reverse skeleton` | Writes `design/DESIGN.md` with frontmatter that accounts for every file as it stands, so the checker passes at once, and a body whose every section is a question. | Nothing: `validate:` and `commits:` are written as comments. |
-| `reverse draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
+| `reverse draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`, or of `AGENTS.md` where `CLAUDE.md` only points at it. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
 | a person | Reads every line. Answers each `(inferred)` and each `TODO(design)`. Switches on `validate:`. | Everything. |
 
 `reverse draft -rules <file>` hands the session rules you state, in your words: each is
@@ -459,6 +481,7 @@ go -C harness run ./cmd/coldread -only comprehension
 go -C harness run ./cmd/reverse survey          # what a machine can see
 go -C harness run ./cmd/reverse draft           # draft the design from the code
 go -C harness run ./cmd/subject "fix: ..."       # is this subject a Conventional Commit
+go -C harness run ./cmd/branch feat/a-thing      # is this name a change branch's here
 harness/safe-push                                # check, push, open the pull request
 harness/safe-push --no-pr                        # push only
 harness/safe-push --tag v1.2.0                   # tag main's tip, as merged

@@ -3,6 +3,9 @@ package main
 import (
 	"errors"
 	"harness/internal/design"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"harness/internal/session"
@@ -158,5 +161,123 @@ func TestAnAreaIsReadWithTheDesignAndWithoutTheOtherAreas(t *testing.T) {
 	}
 	if head, reading, _ := handed(repo, "x", ""); head != "x" || len(reading) != 1 {
 		t.Fatal("with no area named, the design alone is handed over")
+	}
+}
+
+const aDesign = "---\nfiles: [app/**]\n---\n\n# shop\n\n## Scope\n\nA shop.\n\n## What must always hold\n\n- **INV-001** — a cart is never negative.\n\n## Decisions\n\n### ADR-0001 — one cart a session\n\nNot recorded. TODO(design)\n\n## The files\n\n`app/` is the shop.\n"
+
+// A document that is not a design is known for one from the document alone:
+// a skeleton by the line it carries, frontmatter that accounts for no file,
+// a document without the sections that hold what governs, and, asked about
+// one area, a spine that is still a skeleton. A draft with marks still in it
+// is a design, and so is one that only speaks of the skeleton's mark.
+func TestADocumentThatIsNotADesignIsKnownWithoutAskingASession(t *testing.T) {
+	files := design.Design{Files: []string{"app/**"}}
+	areas := design.Design{Spines: []design.Area{{Name: "cart", Files: []string{"app/cart/**"}}}}
+	skeleton := strings.Replace(aDesign, "# shop\n", "# shop\n\n"+design.SkeletonMark+"\n", 1)
+	cases := []struct {
+		name  string
+		repo  *design.Repo
+		main  string
+		spine string
+		why   string // "" when it is a design
+		first string
+	}{
+		{name: "a design, with a mark left in it", repo: &design.Repo{Design: files}, main: aDesign},
+		{name: "a design that speaks of the mark", repo: &design.Repo{Design: files}, main: aDesign + "\nA skeleton carries `" + design.SkeletonMark + "`.\n"},
+		{name: "a design whose files are all in areas", repo: &design.Repo{Design: areas}, main: aDesign},
+		{name: "a skeleton", repo: &design.Repo{Design: files}, main: skeleton,
+			why: "design/DESIGN.md is still a skeleton", first: "go -C ../harness run ./cmd/reverse draft  and answer each TODO(design)"},
+		{name: "no files", repo: &design.Repo{}, main: aDesign,
+			why: "accounts for no files", first: "under files:"},
+		{name: "a README under frontmatter", repo: &design.Repo{Design: files}, main: "---\nfiles: [app/**]\n---\n\n# shop\n\n## Install\n\nRun make.\n\n```\n## Decisions\n```\n",
+			why: `has no section "What must always hold", "Decisions", "Files"`, first: "../harness/templates/DESIGN.md"},
+		{name: "one section missing", repo: &design.Repo{Design: files}, main: strings.Replace(aDesign, "## Decisions", "## Choices", 1),
+			why: `has no section "Decisions", so`, first: "write them"},
+		{name: "an area whose spine is a skeleton", spine: "cart", main: aDesign,
+			repo: &design.Repo{Design: areas, Spines: []design.Spine{{Name: "cart", Path: "design/spines/cart.md", Doc: "# cart\n\n" + design.SkeletonMark + "\n"}}},
+			why:  "design/spines/cart.md is still a skeleton", first: "run ./cmd/reverse draft -spine cart"},
+		{name: "an area whose spine is drafted", spine: "cart", main: aDesign,
+			repo: &design.Repo{Design: areas, Spines: []design.Spine{{Name: "cart", Path: "design/spines/cart.md", Doc: "# cart\n\nCART RULES\n"}}}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			why, first := notADesign(c.repo, c.main, c.spine, "../harness")
+			if c.why == "" {
+				if why != "" {
+					t.Fatalf("a design was refused: %s", why)
+				}
+				return
+			}
+			if !strings.Contains(why, c.why) {
+				t.Errorf("why is %q, want it to hold %q", why, c.why)
+			}
+			if !strings.Contains(first, c.first) {
+				t.Errorf("what to do first is %q, want it to hold %q", first, c.first)
+			}
+		})
+	}
+}
+
+// The command itself, run on a skeleton, starts no session: it refuses,
+// says there is no design to test and what to do first, and the stand-in for
+// the claude tool is never run. Run on a design, the same stand-in is run,
+// which is what shows the first case would have started one.
+func TestADocumentThatIsNotADesignIsRefusedBeforeAnySessionIsStarted(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh to stand in for the claude tool")
+	}
+	skeleton := strings.Replace(aDesign, "# shop\n", "# shop\n\n"+design.SkeletonMark+"\n", 1)
+	cold := func(doc string) (out string, err error, started bool) {
+		t.Helper()
+		root, _ := filepath.EvalSymlinks(t.TempDir())
+		marker := filepath.Join(root, "a-session-was-started")
+		fake := filepath.Join(root, "claude")
+		for name, body := range map[string]string{
+			"design/DESIGN.md":                  doc,
+			"harness/go.mod":                    "module harness\n",
+			"harness/coldread/coldread.yaml":    "model: a-model\nverdict: \"VERDICT:\"\n",
+			"harness/coldread/comprehension.md": "Explain it.\n",
+			"claude":                            "#!/bin/sh\ncat >/dev/null\n: > '" + marker + "'\necho 'VERDICT: PASS'\n",
+		} {
+			p := filepath.Join(root, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command("go", "run", ".", "-root", root, "-only", "comprehension", "-claude", fake)
+		for _, kv := range os.Environ() {
+			if !strings.HasPrefix(kv, "GIT_") {
+				cmd.Env = append(cmd.Env, kv)
+			}
+		}
+		cmd.Env = append(cmd.Env, "GOWORK=off")
+		b, err := cmd.CombinedOutput()
+		_, statErr := os.Stat(marker)
+		return string(b), err, statErr == nil
+	}
+
+	out, err, started := cold(aDesign)
+	if err != nil || !started || !strings.Contains(out, "comprehension: PASS") {
+		t.Fatalf("the fixture does not start a session on a design (%v, started %v):\n%s", err, started, out)
+	}
+
+	out, err, started = cold(skeleton)
+	if started {
+		t.Fatalf("a session was started on a skeleton:\n%s", out)
+	}
+	if err == nil {
+		t.Fatalf("a skeleton was not refused:\n%s", out)
+	}
+	for _, want := range []string{"no design to test, and no session was started", "design/DESIGN.md is still a skeleton", "first, draft it with  go -C harness run ./cmd/reverse draft"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the refusal does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "comprehension: FAIL") || strings.Contains(out, "VERDICT") {
+		t.Errorf("the refusal reads as a verdict:\n%s", out)
 	}
 }

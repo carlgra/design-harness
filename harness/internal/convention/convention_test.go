@@ -96,3 +96,61 @@ func TestTheConventionBindsOnlyARepositoryWhoseDesignAsksForIt(t *testing.T) {
 		})
 	}
 }
+
+// A change branch is feat/<what> or fix/<what> unless the design says
+// otherwise, and then it is a name the whole of which matches the design's
+// pattern, and feat/ is one only if the pattern says so. A pattern that does
+// not compile is an error, not a repository with no rule.
+func TestAChangeBranchIsNamedAsTheDesignAsksOrFeatOrFix(t *testing.T) {
+	cases := []struct {
+		name, frontmatter string
+		own, fails        bool
+		yes, no           []string
+	}{
+		{"silent", "files: [a/**]\n", false, false,
+			[]string{"feat/a-thing", "fix/a/b"}, []string{"main", "feat/", "feat", "chore/a-thing", "claude/session-1", "x/feat/a-thing"}},
+		{"a ticket first", "files: [a/**]\nbranches: '[A-Z]+-[0-9]+/.+'\n", true, false,
+			[]string{"SHOP-12/a-thing"}, []string{"feat/a-thing", "SHOP-12", "my/SHOP-12/a-thing"}},
+		{"the whole name, with alternatives", "files: [a/**]\nbranches: 'feature/.+|bugfix/.+'\n", true, false,
+			[]string{"feature/a", "bugfix/b"}, []string{"feature/", "a-bugfix/b", "feat/a"}},
+		{"not a pattern", "files: [a/**]\nbranches: '(feat'\n", false, true, nil, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(root, "design"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			doc := "---\n" + c.frontmatter + "---\n\n# x\n"
+			if err := os.WriteFile(filepath.Join(root, "design", "DESIGN.md"), []byte(doc), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			rule, err := Branches(root)
+			if (err != nil) != c.fails {
+				t.Fatalf("err %v, expected failure %v", err, c.fails)
+			}
+			if c.fails {
+				if rule.Matches("feat/a-thing") {
+					t.Fatal("a pattern that did not compile still passed a name")
+				}
+				return
+			}
+			if rule.Own != c.own {
+				t.Errorf("own %v, expected %v", rule.Own, c.own)
+			}
+			if c.own && !strings.Contains(rule.Form(), rule.Pattern) {
+				t.Errorf("the form does not give the pattern: %s", rule.Form())
+			}
+			for _, name := range c.yes {
+				if !rule.Matches(name) {
+					t.Errorf("%s was refused", name)
+				}
+			}
+			for _, name := range c.no {
+				if rule.Matches(name) {
+					t.Errorf("%s was accepted", name)
+				}
+			}
+		})
+	}
+}

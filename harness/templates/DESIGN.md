@@ -14,6 +14,9 @@ tests: []
 {{VALIDATE}}
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
 {{COMMITS}}
+# How a change branch is named, where that is not feat/<what> or fix/<what>:
+# a regular expression the whole name must match. safe-push pushes no other.
+# branches: '[A-Z]+-[0-9]+/.+'
 # The server's protection of the default branch is read before every push
 # (GitHub, through gh). Take the # off once main is protected.
 # protection: required
@@ -107,7 +110,8 @@ makes that due. None is accepted as final.
 
 A change starts with a note under `design/changes/<date>-<slug>.md`: the
 problem, the plan, the alternatives rejected, and the files to change and why.
-Work happens on a `feat/` or `fix/` branch, never on `main`. `harness/safe-push`
+Work happens on a change branch, `feat/<what>` or `fix/<what>` unless `branches:` in the
+frontmatter says otherwise, never on `main`. `harness/safe-push`
 runs the checker and the repository's own gate, pushes the branch and opens the
 pull request; CI runs the checker again, and `main` is protected behind it. A
 person merges. The change ends with this document saying what is now true.

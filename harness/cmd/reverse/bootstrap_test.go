@@ -347,3 +347,273 @@ func TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects(t *testing
 		t.Errorf("a second update changed the rules again:\n%s", out)
 	}
 }
+
+// theScript is the real bootstrap, beside harness/ in the method's own
+// repository; a copy of the harness in a project has none, and there a test
+// that runs it has nothing to walk.
+func theScript(t *testing.T) string {
+	t.Helper()
+	script, err := filepath.Abs(filepath.Join("..", "..", "..", "bootstrap"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(script); err != nil {
+		t.Skip("no bootstrap beside this harness: it is a copy in a project")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	return script
+}
+
+// aProject is a git repository holding the files given, with nothing
+// committed.
+func aProject(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	for name, body := range files {
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitIn(t, root, "init", "-q", "-b", "main")
+	return root
+}
+
+func readIn(t *testing.T, root, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// Where CLAUDE.md only points at AGENTS.md, by an import or as a link, the
+// method's rules are added to AGENTS.md, where every agent reads them, and
+// bootstrap says so; CLAUDE.md is left exactly as it was. The draft writes
+// the project's section into the same file, and an update replaces the rules
+// there.
+func TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive(t *testing.T) {
+	script := theScript(t)
+	const (
+		pointer  = "# Agents\n\n@AGENTS.md\n"
+		standing = "# Standing instructions\n\nAlways run make test.\n"
+	)
+	cases := []struct {
+		name string
+		link bool
+		says string
+	}{
+		{"an import", false, "at the end of AGENTS.md (CLAUDE.md only imports it)"},
+		{"a link", true, "at the end of AGENTS.md (CLAUDE.md is a link to it)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := aProject(t, map[string]string{"AGENTS.md": standing, "CLAUDE.md": pointer})
+			claude := filepath.Join(root, "CLAUDE.md")
+			if c.link {
+				if err := os.Remove(claude); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink("AGENTS.md", claude); err != nil {
+					t.Skip("this file system has no links")
+				}
+			}
+			untouched := func(when string) {
+				t.Helper()
+				fi, err := os.Lstat(claude)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if c.link && fi.Mode()&os.ModeSymlink == 0 {
+					t.Fatalf("%s, CLAUDE.md is no longer a link", when)
+				}
+				if !c.link && readIn(t, root, "CLAUDE.md") != pointer {
+					t.Fatalf("%s, CLAUDE.md was written to:\n%s", when, readIn(t, root, "CLAUDE.md"))
+				}
+			}
+
+			out := run(t, "sh", script, "--no-ci", "--no-hooks", root)
+			if !strings.Contains(out, c.says) {
+				t.Errorf("bootstrap did not say which file it chose, %q:\n%s", c.says, out)
+			}
+			untouched("after adopting")
+			agents := readIn(t, root, "AGENTS.md")
+			if !strings.HasPrefix(agents, standing) {
+				t.Errorf("the project's own AGENTS.md was not kept as it was:\n%s", agents)
+			}
+			for _, want := range []string{MethodBegin, "Design before code", ProjectBegin} {
+				if strings.Count(agents, want) != 1 {
+					t.Errorf("AGENTS.md holds %q %d times, want once", want, strings.Count(agents, want))
+				}
+			}
+
+			// The draft's section for the project goes in the same file.
+			file, err := writeProject(root, "- Build with make.")
+			if err != nil || file != "AGENTS.md" {
+				t.Fatalf("the project's section went to %q (%v)", file, err)
+			}
+			untouched("after a draft")
+			agents = readIn(t, root, "AGENTS.md")
+			if !strings.Contains(agents, "- Build with make.") || strings.Count(agents, ProjectBegin) != 1 {
+				t.Errorf("the project's section is not in AGENTS.md once:\n%s", agents)
+			}
+
+			// A year passes; an update finds the rules where they are.
+			stale := strings.Replace(agents, "1. **Design before code.**", "1. **A RULE FROM AN OLD VERSION.**", 1)
+			if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(stale), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out = run(t, "sh", script, "--update", "--no-ci", "--no-hooks", root)
+			if !strings.Contains(out, "replaced  the method's rules in AGENTS.md") {
+				t.Errorf("an update did not say where it replaced the rules:\n%s", out)
+			}
+			untouched("after an update")
+			if got := readIn(t, root, "AGENTS.md"); got != agents {
+				t.Errorf("an update did not bring AGENTS.md back to the current rules and nothing else:\n%s", got)
+			}
+		})
+	}
+}
+
+// The workflow bootstrap writes runs where the repository's own workflows
+// run: on the one runner they all name, and where they name two, on the
+// template's, with a line that says the runner is one to check and what was
+// found. A repository with no workflow is told nothing.
+func TestTheWorkflowRunsWhereTheRepositorysWorkflowsRun(t *testing.T) {
+	script := theScript(t)
+	job := func(runsOn string) string {
+		return "name: ci\non: [push]\njobs:\n  build:\n    runs-on: " + runsOn + "\n    steps:\n      - run: make\n"
+	}
+	const written = ".github/workflows/harness.yml"
+
+	root := aProject(t, map[string]string{".github/workflows/ci.yml": job("self-hosted"), ".github/workflows/release.yml": job("self-hosted")})
+	out := run(t, "sh", script, "--no-hooks", root)
+	if ci := readIn(t, root, written); !strings.Contains(ci, "    runs-on: self-hosted\n") || strings.Contains(ci, "ubuntu-latest") {
+		t.Errorf("the workflow does not run where the repository's do:\n%s", ci)
+	}
+	if !strings.Contains(out, "runs-on: self-hosted in that workflow") || !strings.Contains(out, "harness: OK") {
+		t.Errorf("bootstrap did not say which runner it wrote:\n%s", out)
+	}
+
+	root = aProject(t, map[string]string{".github/workflows/ci.yml": job("self-hosted"), ".github/workflows/mac.yml": job("macos-14")})
+	out = run(t, "sh", script, "--no-hooks", root)
+	if ci := readIn(t, root, written); !strings.Contains(ci, "    runs-on: ubuntu-latest\n") {
+		t.Errorf("with two runners to choose from the workflow was not left on the template's:\n%s", ci)
+	}
+	if !strings.Contains(out, "is a line to check: this repository's workflows run on macos-14 and self-hosted") {
+		t.Errorf("bootstrap did not say the runner is a line to check:\n%s", out)
+	}
+
+	root = aProject(t, map[string]string{"README.md": "# shop\n"})
+	out = run(t, "sh", script, "--no-hooks", root)
+	if ci := readIn(t, root, written); !strings.Contains(ci, "    runs-on: ubuntu-latest\n") || strings.Contains(out, "runs-on") {
+		t.Errorf("a repository with no workflow was told about a runner:\n%s", out)
+	}
+}
+
+// An update replaces an earlier form of this harness, one with the checker
+// and the push script and no FRAMEWORK.md, carrying its settings across from
+// their old names; says what an update leaves to do, and not what a first
+// adoption does; and names each test the design cites that went with the old
+// harness. Without --update the earlier harness stops bootstrap, which says
+// to use it. A harness/ that is not a harness is never replaced.
+func TestAnUpdateReplacesAnEarlierHarnessAndSaysWhatAnUpdateLeavesToDo(t *testing.T) {
+	script := theScript(t)
+	refused := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("sh", append([]string{script}, args...)...)
+		for _, kv := range os.Environ() {
+			if !strings.HasPrefix(kv, "GIT_") {
+				cmd.Env = append(cmd.Env, kv)
+			}
+		}
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("bootstrap %v was not refused:\n%s", args, out)
+		}
+		return string(out)
+	}
+
+	root := aProject(t, map[string]string{"README.md": "# shop\n"})
+	run(t, "sh", script, "--no-ci", "--no-hooks", root)
+	write := func(name, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The name of a test only the earlier harness held, put together here so
+	// that this file, which the update copies in, does not hold it.
+	const lost = "TestOnlyThe" + "EarlierHarnessHeld"
+	// The harness as it once was: no FRAMEWORK.md, its cold-read settings
+	// under the old name, and a test this harness does not hold, which the
+	// project's design names.
+	for _, gone := range []string{"harness/FRAMEWORK.md", "harness/coldread"} {
+		if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(gone))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("harness/goldfish/goldfish.yaml", "model: the-projects-own\nverdict: \"VERDICT:\"\n")
+	write("harness/cmd/check/earlier_test.go", "package main\n\nimport \"testing\"\n\nfunc "+lost+"(t *testing.T) {}\n")
+	doc := readIn(t, root, "design/DESIGN.md")
+	named := strings.Replace(strings.Replace(doc, "tests: []", "tests:\n  - "+lost, 1), SkeletonMark+"\n", "", 1)
+	if named == doc {
+		t.Fatalf("the fixture did not name the test:\n%s", doc)
+	}
+	write("design/DESIGN.md", named)
+
+	if out := refused(root); !strings.Contains(out, "an earlier form of this harness") || !strings.Contains(out, "--update") {
+		t.Errorf("an earlier harness met without --update was not sent to it:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "harness", "FRAMEWORK.md")); err == nil {
+		t.Fatal("the earlier harness was replaced without --update")
+	}
+
+	out := run(t, "sh", script, "--update", "--no-ci", "--no-hooks", root)
+	if _, err := os.Stat(filepath.Join(root, "harness", "FRAMEWORK.md")); err != nil {
+		t.Fatalf("an update did not replace the earlier harness:\n%s", out)
+	}
+	if !strings.Contains(readIn(t, root, "harness/coldread/coldread.yaml"), "the-projects-own") {
+		t.Error("the earlier harness's settings were not carried across")
+	}
+	if readIn(t, root, "design/DESIGN.md") != named {
+		t.Error("an update changed the project's design")
+	}
+	for _, not := range []string{"Draft the design from the code", "feat/adopt-the-design", "cmd/reverse draft"} {
+		if strings.Contains(out, not) {
+			t.Errorf("an update printed the advice for a first adoption, %q:\n%s", not, out)
+		}
+	}
+	for _, want := range []string{
+		"An update leaves three things to do",
+		"git diff",
+		"run ./cmd/check",
+		"design/DESIGN.md names the test " + lost, // the checker's own refusal
+		"this harness does not hold them:\n\n         " + lost + "\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("an update did not say %q:\n%s", want, out)
+		}
+	}
+
+	// A directory of the project's own that happens to be called harness.
+	other := aProject(t, map[string]string{"harness/notes.txt": "the project's own\n"})
+	for _, args := range [][]string{{other}, {"--update", other}} {
+		if out := refused(args...); !strings.Contains(out, "is not this harness") {
+			t.Errorf("bootstrap %v did not say what it found:\n%s", args, out)
+		}
+	}
+	if readIn(t, other, "harness/notes.txt") != "the project's own\n" {
+		t.Error("a directory that is not a harness was written to")
+	}
+}

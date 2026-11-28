@@ -18,8 +18,9 @@ Read `README.md`, then `design/DESIGN.md`. The method this repository works by i
    source file the design does not account for or a named test that does not exist.
    Decisions and invariants keep their ids, so a citation such as `ADR-0007` always lands.
 3. **Never commit on `main`, and never run `git push`.** Branch first, `feat/<what>` or
-   `fix/<what>`, and push with `harness/safe-push`, which runs the checker and opens the
-   pull request. A person merges.
+   `fix/<what>`, or as `branches:` in the design's frontmatter says where it is set, and
+   push with `harness/safe-push`, which runs the checker and opens the pull request. A
+   person merges.
 4. **A new decision is recorded; a change within the decisions in force is not one.** Add
    or amend a decision in `design/DESIGN.md` only when something is newly decided, reversed
    or renamed. Tuning a value a decision already constrains is code.

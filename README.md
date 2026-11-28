@@ -150,6 +150,7 @@ harness/             everything that is copied into a project
   cmd/coldread       two sessions with no memory read the design, or one area's spine with it: comprehension, readiness
   cmd/reverse        reverse-engineer the design of existing code, whole or one area at a time: survey, skeleton, draft
   cmd/subject        is a commit's subject a Conventional Commit (optional, per repository)
+  cmd/branch         is a name a change branch's: feat/ or fix/, or the pattern the design gives
   cmd/sync           at a root: clone and fetch the repositories its design lists
   safe-push          the one way a branch is pushed: check, push, open the pull request
   hooks/             pre-push and commit-msg, and their installer
@@ -176,6 +177,12 @@ Bootstrap copies `harness/` into the project and adds only what is missing: a
 section is still a question, the first change note, the method's rules in `CLAUDE.md`
 (after whatever is already there), a CI workflow, and the git hooks. It overwrites nothing
 and commits nothing. When it finishes, the checker passes.
+
+The rules go where the project's instructions for an agent live. Where `CLAUDE.md` is a
+link to `AGENTS.md`, or holds only an `@AGENTS.md` import, they are added to `AGENTS.md`,
+and bootstrap says so. The CI workflow runs on the runner the project's other workflows
+all name; where they name more than one, it is written for `ubuntu-latest` and bootstrap
+says that `runs-on:` is a line to check.
 
 Then, in the project:
 
@@ -288,8 +295,11 @@ design-harness/bootstrap --update /path/to/your/project
 ```
 
 replaces the project's `harness/` with this one and keeps its settings, and rewrites the
-method's rules in its `CLAUDE.md`, between their two marks, leaving every other line of
-that file alone. In a repository nested under a root it refreshes the rules only; the
+method's rules in its `CLAUDE.md`, or its `AGENTS.md` if that is where they are, between
+their two marks, leaving every other line of that file alone. It replaces an earlier form of this harness the same way, and then
+prints what an update leaves to do: read the diff, run the checker, and expect it to
+name any test the design cites that this harness does not hold. In a repository nested
+under a root it refreshes the rules only; the
 harness is updated at the root. The harness is
 part of the project once copied: change it there if you need to, through the same door as
 everything else.

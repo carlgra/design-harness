@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -23,6 +24,9 @@ const Unfinished = design.Unfinished
 // Result is what a run found.
 type Result struct {
 	Failures []string
+	// Notices are things a person should know that refuse nothing: each is
+	// printed with the summary, whatever the outcome.
+	Notices  []string
 	Claimed  int
 	InSpines int // of Claimed, those an area holds
 	Orphans  []string
@@ -73,6 +77,9 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 			fmt.Fprintf(w, "harness: %s still says %s in %d place(s)\n", sp.Path, Unfinished, n)
 		}
 	}
+	for _, n := range r.Notices {
+		fmt.Fprintf(w, "harness: %s\n", n)
+	}
 	if r.failed() {
 		fmt.Fprintln(w, "harness: FAILED. Two fixes: amend the design, or change the code.")
 	} else {
@@ -98,7 +105,11 @@ func runChecksOn(repo *design.Repo, today time.Time) *Result {
 	checkTests(repo, res)
 	checkMap(repo, res)
 	checkIDs(repo, parent, res)
-	checkContracts(repo, LocateEnv(parent), res)
+	env := LocateEnv(parent)
+	checkContracts(repo, env, res)
+	if n := contractsOff(repo, parent, env); n != "" {
+		res.Notices = append(res.Notices, n)
+	}
 	checkRules(repo, today, res)
 	checkSizes(repo, res)
 	checkReplaced(repo, res)
@@ -361,10 +372,26 @@ var qualifier = regexp.MustCompile(`[A-Za-z0-9._-]+$`)
 // other name is another repository's to define and is not looked up. A kind
 // a document defines none of is not checked there: it may cite decisions it
 // has not yet brought in.
+//
+// The slash is the only form. An id written after a name with a space,
+// `billing ADR-0045`, is this document's own like any other bare id, and
+// refused when the document does not define it; the refusal says the form,
+// and names the citation it expects when the word before the id is a name
+// one could be qualified by.
 func checkIDs(repo *design.Repo, parent *design.Parent, res *Result) {
 	named := map[string]map[string]int{}
+	// others are the names a citation could be qualified by: every document
+	// that is looked up, and every repository on the map, the root's or this
+	// one's own.
+	others := map[string]bool{}
 	if parent != nil {
 		named[parent.Name] = definitions(parent.Body)
+		for _, e := range parent.Design.Repos {
+			others[path.Base(strings.Trim(e.Path, "/"))] = true
+		}
+	}
+	for _, e := range repo.Design.Repos {
+		others[path.Base(strings.Trim(e.Path, "/"))] = true
 	}
 	named[repo.Name] = definitions(repo.Body)
 	for _, sp := range repo.Spines {
@@ -372,21 +399,38 @@ func checkIDs(repo *design.Repo, parent *design.Parent, res *Result) {
 			named[sp.Name] = definitions(sp.Body)
 		}
 	}
-	checkDocIDs(design.DocPath, repo.Body, named, res)
+	for name := range named {
+		others[name] = true
+	}
+	checkDocIDs(design.DocPath, repo.Name, repo.Body, named, others, res)
 	for _, sp := range repo.Spines {
 		if sp.Err == nil {
-			checkDocIDs(sp.Path, sp.Body, named, res)
+			checkDocIDs(sp.Path, sp.Name, sp.Body, named, others, res)
 		}
 	}
 }
 
-// checkDocIDs holds one document's ids and citations. named are the
-// documents a citation here can be qualified by, each with what it defines.
-func checkDocIDs(doc, body string, named map[string]map[string]int, res *Result) {
+// wordBefore is the word an id follows, through a space, backticks, emphasis
+// and a possessive: billing in "billing ADR-0045", "`billing` ADR-0045" and
+// "billing's ADR-0045".
+func wordBefore(before string) string {
+	before = strings.TrimRight(before, " \t`*_")
+	before = strings.TrimSuffix(strings.TrimSuffix(before, "'s"), "’s")
+	return qualifier.FindString(strings.TrimRight(before, "`*_"))
+}
+
+// checkDocIDs holds one document's ids and citations. self is the name the
+// document is cited by from elsewhere; named are the documents a citation
+// here can be qualified by, each with what it defines; others are every name
+// a reader might have meant to qualify one by.
+func checkDocIDs(doc, self, body string, named map[string]map[string]int, others map[string]bool, res *Result) {
 	defined := definitions(body)
 	type cite struct {
 		id   string
 		line int
+		// after is the name the id was written after, when it is one a
+		// citation could have been qualified by.
+		after string
 	}
 	var cites []cite
 	seen := map[string]bool{}
@@ -414,7 +458,11 @@ func checkDocIDs(doc, body string, named map[string]map[string]int, res *Result)
 				}
 				continue
 			}
-			cites = append(cites, cite{id, i + 1})
+			c := cite{id: id, line: i + 1}
+			if w := wordBefore(line[:loc[0]]); w != self && others[w] {
+				c.after = w
+			}
+			cites = append(cites, c)
 		}
 	}
 	kinds := map[string]bool{}
@@ -429,11 +477,24 @@ func checkDocIDs(doc, body string, named map[string]map[string]int, res *Result)
 	for _, id := range ids {
 		res.fail("%s defines %s %d times: an id names one thing, for life", doc, id, defined[id])
 	}
+	// One refusal an id, at its first citation; the name it was written
+	// after is taken from the first citation that has one.
+	after := map[string]string{}
+	for _, c := range cites {
+		if c.after != "" && after[c.id] == "" {
+			after[c.id] = c.after
+		}
+	}
 	for _, c := range cites {
 		if defined[c.id] > 0 || !kinds[c.id[:3]] || seen[c.id] {
 			continue
 		}
 		seen[c.id] = true
-		res.fail("%s cites %s (first at body line %d), which it does not define", doc, c.id, c.line)
+		if name := after[c.id]; name != "" {
+			res.fail("%s cites %s (first at body line %d), which it does not define; it is written after %q: if it is %s's, cite it as %s/%s, with the slash",
+				doc, c.id, c.line, name, name, name, c.id)
+			continue
+		}
+		res.fail("%s cites %s (first at body line %d), which it does not define; if it is another repository's, cite it as name/%s", doc, c.id, c.line, c.id)
 	}
 }

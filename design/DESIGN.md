@@ -14,6 +14,7 @@ tests:
   - TestEveryFileIsAccountedForOrRefused
   - TestANamedTestMustExist
   - TestAnIdIsDefinedOnceAndEveryCitationLands
+  - TestACitationWithoutTheSlashIsToldTheFormToUse
   - TestADesignNoteCarriesItsParts
   - TestADesignSaysWhatItsNotesCarry
   - TestAnUnfinishedDesignIsSaidToBeUnfinished
@@ -21,6 +22,9 @@ tests:
   - TestASessionIsHandedItsPromptTheDesignAndNothingElse
   - TestAVerdictIsReadFromTheLastLineAndNothingElseCounts
   - TestASessionIsStartedWithExactlyTheToolsItIsGiven
+  - TestADocumentThatIsNotADesignIsRefusedBeforeAnySessionIsStarted
+  - TestADocumentThatIsNotADesignIsKnownWithoutAskingASession
+  - TestASkeletonIsKnownByItsMarkOnALineOfItsOwn
   - TestTheSurveySaysWhatIsThereAndDecidesNothing
   - TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn
   - TestADraftIsReadAsTheDesignAndTheRules
@@ -36,6 +40,11 @@ tests:
   - TestARepositoryUnderARootUsesTheRootsHarnessAndRules
   - TestTheMapIsBroughtInLineWithoutMerging
   - TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects
+  - TestAnUpdateReplacesAnEarlierHarnessAndSaysWhatAnUpdateLeavesToDo
+  - TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive
+  - TestTheRulesFileIsTheOneThatHoldsTheInstructions
+  - TestTheWorkflowRunsWhereTheRepositorysWorkflowsRun
+  - TestTheRunnerIsReadFromTheWorkflowsThatAreThere
   - TestAChangeBranchThatPassesIsPushed
   - TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed
   - TestABranchAlreadyMergedIsNotPushedToAgain
@@ -43,12 +52,16 @@ tests:
   - TestABranchThatDoesNotMergeCleanlyIsRefused
   - TestABranchTheCheckerRefusesIsNotPushed
   - TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks
+  - TestABranchIsNamedAsTheDesignAsksAndStrayWorkIsMovedOnlyToSuchAName
+  - TestAChangeBranchIsNamedAsTheDesignAsksOrFeatOrFix
   - TestTheProtoScanFindsRPCsAndRequestFields
   - TestTheServersBlockIsReadFromItsFence
   - TestARepositorysRoleIsReadFromTheRootsMap
   - TestANewDefinitionIsListedWithItsServer
   - TestAListedDefinitionIsRefusedUntilItsServerNamesATest
   - TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges
+  - TestTheContractsRulesSayWhenTheyAreOff
+  - TestATestServesNamesExistsWhateverTheMapSays
   - TestAProtectionThatLacksSomethingIsNamedForIt
   - TestAProtectionThatCannotBeReadIsNotTakenForNone
   - TestSettingAddsWhatIsLackingAndChangesNothingElse
@@ -98,14 +111,15 @@ commits: conventional
 protection: required
 # The check of a rule this design states. The commands' old names are found
 # nowhere but in the lines of bootstrap that carry an old harness across,
-# which are the list of known breaches.
+# which are the list of known breaches, and in the tests of that carrying.
 rules:
   - id: ADR-0012
     files: [harness/**, bootstrap]
+    except: ['harness/**/*_test.go']
     forbid: '(?i)elephant|goldfish'
 # This document is over the size it tells others to keep, and says so here
 # until it is divided into areas (see What no machine proves yet).
-size: 1400
+size: 1600
 # What a note under design/changes/ carries, from the date the rule began.
 notes:
   from: 2026-11-24
@@ -150,7 +164,8 @@ Two things carry the method.
 forgotten. It has a body, read by people and by model sessions, and YAML frontmatter,
 read by a machine. The frontmatter says which paths hold the code (`files:`),
 which tests must exist (`tests:`), the repository's own gate (`validate:`), whether a
-commit's subject is a Conventional Commit (`commits:`), whether the server's protection
+commit's subject is a Conventional Commit (`commits:`), how a change branch is named
+where that is not `feat/` or `fix/` (`branches:`), whether the server's protection
 of the default branch is read before a push (`protection:`), what a change note
 must carry (`notes:`), the checks of the rules it states (`rules:`), the size a document
 is to stay under (`size:`), and the documents it took its rules from (`replaces:`). Six files at a repository's root need no entry in `files:`, because
@@ -259,7 +274,15 @@ The parts, all under `harness/`:
   "The" aside, so `## The problem` is the section `Problem`. A decision is defined by a heading that opens with its id, `### ADR-0007 — …`; an
   invariant by a list item or heading that opens with its id, `- **INV-012** — …`;
   any other appearance is a citation, and one written `other-repository/ADR-0007` is
-  that repository's and is not looked up. Then the checker runs `validate:`. It also
+  that repository's and is not looked up. The slash is the only form: the name, a
+  slash and the id, with nothing between. An id written after a name with a space,
+  `billing ADR-0007`, is a bare id, this document's own, and is refused when the
+  document does not define it. Every such refusal says how another repository's id is
+  cited. Where the word before the id is a name a citation could be qualified by, the
+  root's, a repository's on the root's map or on this design's own, or an area's, the
+  refusal names the citation it expects, `billing/ADR-0007`; the word is found through
+  a space, backticks, emphasis and a possessive. The document's own name before an id
+  is no such word. Then the checker runs `validate:`. It also
   counts the places the document still says `TODO(design)` outside backticks, the
   mark a draft leaves for a person, and reports the count without failing.
 - `cmd/coldread` puts two questions, comprehension and readiness, each to its own
@@ -271,30 +294,76 @@ The parts, all under `harness/`:
   `VERDICT: PASS` or `VERDICT: FAIL` from the last line of each reply, prints the
   replies and can write them as markdown for a pull request. It exits non-zero when a
   session fails, so that a person's own script can tell; nothing in the harness reads
-  that.
+  that. Before it starts a session, or asks for the change, it looks at the document
+  and refuses one that is not a design: `design/DESIGN.md` still a skeleton; frontmatter
+  with no `files:` and no `spines:`, which accounts for no code; a document with no
+  heading that opens with one of `What must always hold`, `Decisions` and `Files`,
+  matched as a note's sections are, case and a leading "The" aside, and not inside a
+  code fence; or, with `-spine`, that area's spine still a skeleton. It says which it
+  found and what to do first, starts nothing, and exits 2, as it does for anything it
+  cannot run: the outcome is "no design to test", and it is not a FAIL. A design with
+  `TODO(design)` marks still in it is a design and is put to the sessions, since a cold
+  read is how a draft is tried; and a design the checker refuses is too, since a person
+  may want advice mid-change.
 - `cmd/reverse` writes down the design of a repository that has code and no design.
   `survey` lists what a machine can see. `skeleton` writes a `design/DESIGN.md` whose
   frontmatter accounts for every file and whose body is questions. `draft` starts one session
   in the repository with the tools that read, `Read`, `Grep` and `Glob`, and no other,
   hands it `harness/reverse/reverse.md`, the survey and the shape to fill, and writes
-  its reply to `design/DESIGN.md` and to the project's section of `CLAUDE.md`. `prompt`
+  its reply to `design/DESIGN.md` and to the project's section of the rules file. `prompt`
   prints what that session would be handed. A fifth step, `where`, is for scripts: it
-  prints where a repository sits as `key=value` lines: `root=`, the root's name, which is
+  prints what `bootstrap` needs to know of a repository as `key=value` lines. `rules=` is
+  the rules file, and `rules_because=` why, when it is not `CLAUDE.md`. `runs_on=` is
+  the runner the repository's workflows run on, or in its place `runs_on_check=` says
+  what they run on when that is not one runner. Under a root it
+  prints `root=`, the root's name, which is
   that of its `origin` or, with none, of its directory; `path=`, this repository's path
   from the root with forward slashes, `billing` or `services/billing`; and where the
   root's map lists a contracts repository beside it, `contracts_path=`, its path from
-  the root, and `contracts_remote=`, its remote as the map gives it. Under no root it
-  prints nothing. `bootstrap` reads the last two to write a CI workflow. A skeleton is known by one line it carries,
-  the comment `<!-- design:skeleton -->`; a draft does not carry it, so once a draft
+  the root, and `contracts_remote=`, its remote as the map gives it. `bootstrap` reads
+  the first for where to write the rules and the rest to write a CI workflow.
+
+  The rules file is the file at a repository's root that holds its standing
+  instructions for an agent. It is `AGENTS.md` where `CLAUDE.md` is a link to it, or
+  holds nothing but an import of it: `@AGENTS.md` or `@./AGENTS.md` on a line of its
+  own, and no other line that is not blank or a heading. A file that already holds the
+  method's rules is the rules file, `CLAUDE.md` before `AGENTS.md`, so that an update
+  finds them where they are. In every other case it is `CLAUDE.md`, one that imports
+  `AGENTS.md` among lines of its own included. `bootstrap` and `draft` both ask
+  `RulesFile`, in `where.go`, and neither decides it again.
+
+  The runner is read from the `runs-on:` of every job in every `.yml` or `.yaml` file
+  under `.github/workflows/`, `harness.yml` aside, since that is the file being
+  written. A plain label is one word of letters, digits, `.`, `_` and `-`:
+  `ubuntu-latest`, `self-hosted`. Where every job that names a runner names the same
+  plain label, that is the runner. Where they name two, or one names a list, an
+  expression such as a matrix's value, or a group, or a workflow cannot be parsed,
+  there is no one runner, and what was found is given in words. A job that calls
+  another workflow names no runner and is passed over. With no workflow to read
+  nothing is printed. A skeleton is known by one line it carries,
+  the comment `<!-- design:skeleton -->` on a line of its own, which `internal/design`
+  recognises for every command; the comment written inside a sentence, as this
+  document writes it, is not the mark. A draft does not carry it, so once a draft
   is written the document counts as someone's and a second draft needs `-force`. The
-  project's section of `CLAUDE.md` is what lies between the comments
+  project's section of the rules file is what lies between the comments
   `<!-- design:project:begin -->` and `<!-- design:project:end -->`. The method's
   own rules sit above it between `<!-- design-harness:begin -->` and
-  `:end -->`, come from `templates/CLAUDE.md`, and are never written by a session.
+  `:end -->`, come from `templates/CLAUDE.md` whichever file they are written to, and are never written by a session.
 - `internal/session` is the one place a model is started: the arguments, the settings
   file, the runner the tests replace.
 - `cmd/subject` and `internal/convention` say whether a subject is a Conventional
   Commit, in a repository whose frontmatter asks for them.
+- `cmd/branch` and `internal/convention` say whether a name is a change branch's. With
+  no `branches:` in the frontmatter that is `feat/` or `fix/` and at least one
+  character more. With `branches:`, a regular expression in Go's syntax, it is a name
+  the whole of which matches the expression, and `feat/` is one only if the expression
+  says so. `branch NAME` exits zero for a change branch's name and non-zero otherwise;
+  `branch -form` prints what a change branch is called, for a message. An expression
+  that does not compile is an error from this command and never read as no rule:
+  `safe-push` then pushes nothing. `main`, `master` and the remote's default branch are
+  never change branches, whatever the expression. Under a root each repository's
+  `branches:` is its own: it is not one of the rules a nested repository takes from the
+  root's frontmatter.
 - `cmd/protection` reads how the server protects the default branch, in a repository
   whose frontmatter says `protection: required` (ADR-0011), and passes without reading
   anything in one that does not. It needs three things of the branch: that a pull
@@ -360,12 +429,17 @@ The parts, all under `harness/`:
   itself: `protection:` is not one of the rules a nested repository takes from the
   root's frontmatter, because it is a fact about one repository's server settings.
 - `safe-push` is the one way a branch is pushed. It never pushes `main`, or a branch
-  not named `feat/` or `fix/`: work it finds on one is moved, commits and uncommitted
+  that is not a change branch, as `cmd/branch` judges it: work it finds on one is moved, commits and uncommitted
   changes both, to a new branch, and that is what is pushed. The new branch is named
   `feat/` or `fix/` and then a slug of the first commit's subject, which is also the
   pull request's title: the subject without its Conventional Commit type, whole when it
   is short and cut at a word when it is long. It is `fix/` when the subject opens with
-  `fix`, or with Fix, Correct, Repair or Revert, and `feat/` otherwise. A branch whose remote is already merged
+  `fix`, or with Fix, Correct, Repair or Revert, and `feat/` otherwise. Where the
+  design sets `branches:` and that name does not match, the slug alone is tried, for a
+  pattern with no prefix. Where neither matches, the pattern asks for something the
+  script cannot know, a ticket number or a person's name: it refuses before anything is
+  stashed or moved, gives the pattern, and says to start a branch with
+  `git switch -c`. A branch whose remote is already merged
   into the default branch is treated the same way: new work on it is moved. It requires a clean tree; checks the branch merges cleanly into
   the remote's default branch; runs `go vet` over the harness itself and then the
   checker, which runs the repository's gate; checks the title; runs `cmd/protection`,
@@ -466,8 +540,9 @@ root's found on disk is not looked up.
   In every other repository under that root, the checker reads the contracts
   repository's notes and definitions at its merged state, and for each entry naming
   this repository as server whose name a merged definition declares, requires an item
-  under `serves:` in this repository's frontmatter with a `test:`, and requires every test
-  `serves:` names to exist:
+  under `serves:` in this repository's frontmatter with a `test:`. Every test `serves:`
+  names must exist, and that is held in every repository, under a root or not and
+  whatever the map says, since it needs no contracts repository to be found:
 
   ```yaml
   serves:
@@ -487,9 +562,21 @@ root's found on disk is not looked up.
   An entry on an unmerged branch of the contracts repository binds nothing. A contracts
   repository that is not checked out is a refusal, not a skip, in a repository that
   must read it. At a root, and under a root with no contracts repository, none of this
-  applies; a contracts repository the map marks `status: planned` is no contracts
+  applies but the existence of the tests `serves:` names; a contracts repository the map marks `status: planned` is no contracts
   repository yet, and where a map lists more than one the first that is not planned is
-  the one. A repository under the root that the map does not list yet is held as a
+  the one.
+
+  The rules are switched on by one thing, a map entry whose kind is `contracts`, so a
+  root that lists its repository of definitions under a kind of its own has all of
+  them off. The checker says so. Where no entry of the map has the kind, planned or
+  not, and the signs of a contracts repository are there, it prints one line with the
+  summary, `harness: the contracts rules are off: …`, giving each sign, the map that
+  lacks the kind, and what to do; it refuses nothing for it and the run still passes.
+  The signs are a `serves:` key in a design, a `servers` block in a note, and a
+  `.proto` file a person wrote. In a nested repository they are looked for in that
+  repository. At a root with a map they are looked for in each listed repository that
+  is on disk and not planned. A repository under no root, and a root with no map, are
+  told nothing. A repository under the root that the map does not list yet is held as a
   server: it must be able to read the contracts repository, and no entry binds it until
   the map lists it, since an entry naming a server off the map is refused in the
   contracts repository.
@@ -511,19 +598,39 @@ root's found on disk is not looked up.
   for a person to correct.
 
 `bootstrap`, at this repository's root, is POSIX shell. Given a project, new or old, it copies
-`harness/` in, then writes `CLAUDE.md` or adds the method's rules to the end of one
-that exists, the CI workflow, then the skeleton and the first note, then installs the
+`harness/` in, then writes the rules file or adds the method's rules to the end of one
+that exists, and says which file that is when it is not `CLAUDE.md`, the CI workflow, then the skeleton and the first note, then installs the
 hooks, and runs the checker. Each of those is skipped when the thing is already there,
 and a `harness/` directory that is not this harness stops it before anything is
-written. `--update` is the one thing that replaces, and it replaces what is the
+written. A `harness/` is this harness when it holds `FRAMEWORK.md`. It is an earlier
+form of this harness when it does not, and holds `cmd/check/`, `go.mod` and
+`safe-push`: `--update` replaces that as it replaces a current one, and without
+`--update` bootstrap stops and says to run it with `--update`, since the templates and
+commands the other steps need are not in an earlier form. Anything else called
+`harness/` is the project's own directory, and neither form of the command writes to
+it. The CI workflow is written from a template whose one job runs on
+`ubuntu-latest`. Where the repository's own workflows all run on one other runner,
+bootstrap writes that runner in its place and says so. Where they give no one runner,
+it leaves the template's and prints that `runs-on:` is a line to check, with what the
+workflows run on. The same is done for a nested repository's workflow. `--update` is the one thing that replaces, and it replaces what is the
 harness's: it swaps a project's `harness/` for this one, whole, keeping only the
 project's two settings files, `coldread/coldread.yaml` and `reverse/reverse.yaml`;
-and it rewrites the method's rules in `CLAUDE.md`, the lines between their two marks,
-from the current template, leaving every line outside the marks as it was. In a
+and it rewrites the method's rules in the rules file, the lines between their two marks,
+from the current template, leaving every line outside the marks as it was, and writing
+the file in place so that one reached through a link stays a link. In a
 repository nested under a root there is no harness to swap, so `--update` there
 rewrites the rules alone, from the root's templates. A change a project made to its
 own copy is lost from the working tree by that and shows in `git diff`, where the
 person updating decides what to keep.
+
+What bootstrap prints last depends on what it did. After adopting, it is the steps to a
+design: draft, read, cold read, commit. After `--update` it is what an update leaves:
+read the diff, run the checker, commit; none of the steps to a design, since the
+project has one. A design may name tests that live in the harness. Before `--update`
+swaps the harness it lists the Go tests the old one holds, and afterwards prints each
+that the new one does not hold and `design/DESIGN.md` mentions, so that a person knows
+which names the checker is about to refuse and why. The checker, run at the end as
+always, refuses them in its own words; bootstrap still finishes.
 
 Run on a repository under a root, `bootstrap` adopts it as nested: it copies no
 harness; writes `CLAUDE.md` from `templates/CLAUDE.nested.md`, which names the path to
@@ -581,8 +688,10 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   design accounts for. *(`test: TestANamedTestMustExist`)*
 - **INV-003** — A decision or invariant id is defined once in a document, the design or
   a spine, and every id it cites as its own is defined in it; another repository's,
-  qualified by its name, is not this document's to define.
-  *(`test: TestAnIdIsDefinedOnceAndEveryCitationLands`)*
+  qualified by its name, is not this document's to define. Qualified means the name, a
+  slash and the id; an id after a name and a space is the document's own.
+  *(`test: TestAnIdIsDefinedOnceAndEveryCitationLands`, `test:
+  TestACitationWithoutTheSlashIsToldTheFormToUse`)*
 - **INV-004** — A change note dated from the frontmatter's `notes: from:` carries every
   section the frontmatter asks of a note, each with something under it; a note dated before
   is never reread. *(`test: TestADesignNoteCarriesItsParts`,
@@ -594,12 +703,17 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   adds to a session is read at review)*
 - **INV-006** — The `coldread` command judges nothing: a verdict is the last line of a
   reply in the exact form, anything else is a failure, and no verdict is read by any
-  other command. *(`test: TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`)*
+  other command. It starts no session on a document that is not a design, which it
+  tells from the document's shape alone. *(`test:
+  TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`, `test:
+  TestADocumentThatIsNotADesignIsRefusedBeforeAnySessionIsStarted`, `test:
+  TestADocumentThatIsNotADesignIsKnownWithoutAskingASession`)*
 - **INV-007** — The session that drafts a design can read and cannot write. Only the
   `reverse` command writes, only `design/DESIGN.md` and the marked section of
-  `CLAUDE.md`, and never over a design that is no longer a skeleton unless forced.
+  the rules file, and never over a design that is no longer a skeleton unless forced.
   *(`test: TestASessionIsStartedWithExactlyTheToolsItIsGiven`, `test:
   TestADraftNeverReplacesADesignSomeoneWrote`, `test:
+  TestASkeletonIsKnownByItsMarkOnALineOfItsOwn`, `test:
   TestTheProjectsRulesReplaceOnlyTheirOwnSection`, `test:
   TestADraftIsReadAsTheDesignAndTheRules`)*
 - **INV-008** — A survey and a skeleton decide nothing: the frontmatter a skeleton writes
@@ -611,22 +725,28 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   which is the root's decision and not the skeleton's (INV-016). *(`test: TestTheSurveySaysWhatIsThereAndDecidesNothing`, `test:
   TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn`)*
 - **INV-009** — Adopting with bootstrap overwrites nothing that exists, adding to the
-  end of a `CLAUDE.md` that is already there and leaving every line of it as it was,
-  and commits nothing; and a project it has run on passes the checker with its own copy of the
+  end of a rules file that is already there and leaving every line of it as it was,
+  and commits nothing; the rules go in the file that holds the repository's standing
+  instructions, and a `CLAUDE.md` that only points at `AGENTS.md` is not written to; and a project it has run on passes the checker with its own copy of the
   harness alone, or, adopted under a root, with the root's and no copy (INV-016); the
   one exception is a repository merged contracts already name as a server, which is
   refused until it names its tests (INV-018). With `--update`, and only then, it replaces what is the harness's:
   `harness/`, less the project's two settings files, and the method's rules between
-  their marks in `CLAUDE.md`; and nothing else.
+  their marks in the rules file; and nothing else.
   *(`test: TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`,
-  `test: TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`)*
+  `test: TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`, `test:
+  TestAnUpdateReplacesAnEarlierHarnessAndSaysWhatAnUpdateLeavesToDo`, `test:
+  TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive`, `test:
+  TestTheRulesFileIsTheOneThatHoldsTheInstructions`)*
 - **INV-010** — A design that still says `TODO(design)` is reported as unfinished on
   every run of the checker, and is not refused for it. *(`test:
   TestAnUnfinishedDesignIsSaidToBeUnfinished`)*
 - **INV-011** — Nothing reaches `main` except through a pull request that passed the
   checker. *(`harness/hooks/pre-push` and `harness/safe-push` refuse the push, `test:
   TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`, `test:
-  TestABranchTheCheckerRefusesIsNotPushed`; where the frontmatter asks, the server's
+  TestABranchTheCheckerRefusesIsNotPushed`; whatever pattern the design gives for a
+  change branch, `main` is not one, `test:
+  TestABranchIsNamedAsTheDesignAsksAndStrayWorkIsMovedOnlyToSuchAName`; where the frontmatter asks, the server's
   protection is read before every push, `test:
   TestAPushIsRefusedWhileTheServersProtectionLacksSomething`)*
 - **INV-012** — Nothing under `harness/` needs anything outside it, or names a
@@ -665,9 +785,14 @@ root needs is named in the workflow's comment and set by a person. A root is boo
 - **INV-018** — A repository the contracts repository names as serving a definition
   names, under `serves:`, a test that exists for it. A name binds from the moment a
   merged definition declares it, and not before. A contracts repository that cannot be
-  read is a refusal. *(`test: TestAListedDefinitionIsRefusedUntilItsServerNamesATest`,
+  read is a refusal. A test `serves:` names exists in every repository, whether or not
+  a contracts repository is found; and where the map gives no repository the kind
+  while the signs of one are there, the checker says the rules are off.
+  *(`test: TestAListedDefinitionIsRefusedUntilItsServerNamesATest`,
   `test: TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges`, `test:
-  TestARepositorysRoleIsReadFromTheRootsMap`)*
+  TestARepositorysRoleIsReadFromTheRootsMap`, `test:
+  TestATestServesNamesExistsWhateverTheMapSays`, `test:
+  TestTheContractsRulesSayWhenTheyAreOff`)*
 - **INV-019** — The areas a design defines and the spines on disk are the same set: every
   area has a spine that reads, and every document under `design/spines/` is the spine of
   an area. A source file is under one area at most; a file under none is the design's
@@ -732,6 +857,7 @@ that due. None is accepted as final.
 | INV-011 | the server's protection is read at a push, by a repository that asks, as an administrator; switched off and merged past in the server's own pages, nothing says so until the next administrator pushes, and a repository none of whose administrators push is never read | a scheduled CI job that reads it with a token an administrator stored, and fails | the first project that asks for it |
 | INV-011 | `-set` carries back the settings of a protection that are listed in *How it works*; one the server adds later is dropped by it without a word | `-set` refuses a protection holding a key it does not know | the first one lost |
 | INV-011 | a ruleset's rules are read from the shape the server documents; no ruleset has been read from a live repository by a test | a test against a repository kept for it | the first project protected by a ruleset alone |
+| INV-009 | the runner bootstrap writes into a project's CI workflow is read from the project's other workflows, and a test proves what is written; that the job starts on that runner is seen when the project's first pull request runs | none a test here can give: it is a fact about the project's server | not due |
 | INV-012 | read at review | a test that fails on any `..` path or absolute path in a script, and on a name from a list of project names | the first slip |
 | INV-017 | definitions are read from protobuf only; a contracts repository in another format, OpenAPI or JSON Schema, has its notes held to the block and nothing scanned | a scan per format, behind the same two rules | the first project whose contracts are not protobuf |
 | INV-017 | a contracts repository whose default branch is neither `main` nor `master`, checked out without `origin/HEAD`, as a CI checkout is, is refused until a step sets it | the workflow template sets it after checkout | the first such repository |
@@ -742,7 +868,8 @@ that due. None is accepted as final.
 
 A change starts with a note under `design/changes/<date>-<slug>.md`: the
 problem, the plan, the alternatives rejected, and the files to change and why.
-Work happens on a `feat/` or `fix/` branch, never on `main`. `harness/safe-push`
+Work happens on a `feat/` or `fix/` branch, never on `main`; a repository that names
+its branches otherwise says how in its frontmatter, with `branches:`. `harness/safe-push`
 runs the checker and the repository's own gate, pushes the branch and opens the
 pull request; CI runs the checker again, and `main` is protected behind it. A
 person merges. The change ends with this document saying what is now true.
@@ -808,6 +935,11 @@ change to a design is material. The model, the most a session may spend in dolla
 the form of the verdict line are values in `harness/coldread/coldread.yaml`; the questions are the two prompt files
 beside it.
 
+A document that is not yet a design is not put to a session at all. The command
+refuses it first, from the document alone, and says what to do: a session handed a
+skeleton or a README says so only in its verdict, as a FAIL that reads like any other,
+after it has been paid for.
+
 No tools and no memory because the question is whether the document is enough, and a
 session that can read the code answers a different question. Two questions because
 they fail differently: a document can describe a repository well and still leave a
@@ -826,6 +958,11 @@ particular change to guesswork.
   the one design, whichever repository it is (ADR-0009).
 - **One question.** Comprehension alone passes a design that explains the present and
   is silent on what a change must respect.
+- **Stop a cold read whenever the checker fails.** A person may want advice on a design
+  mid-change, while a file is still unaccounted for. A skeleton, or a document with no
+  decisions section, has no such use.
+- **Refuse a design that still has marks in it.** A draft has them, and a cold read of
+  a draft is the step the method asks for next.
 
 ### ADR-0004 — A design is reverse-engineered in steps, and a person takes it on
 
@@ -872,11 +1009,24 @@ needs GitHub's `gh`, so does reading the server's protection where the frontmatt
 it (ADR-0011), and the cold read and the drafting session need the `claude`
 command-line tool. The scripts set `GOWORK=off` so that
 a project's own Go workspace does not claim the module. Updating is running
-`bootstrap --update`, which replaces the copy and keeps the project's settings.
+`bootstrap --update`, which replaces the copy, an earlier form of this harness included,
+and keeps the project's settings.
 
 A copy because the hook that guards every push must work offline, from a fresh clone,
 at the version the project last reviewed; and because a project should be able to read
 and change what refuses its pushes.
+
+What bootstrap writes around the copy fits the repository it finds. The method's rules
+go in the file that holds the repository's standing instructions: `AGENTS.md` where
+`CLAUDE.md` is a link to it or only imports it, `CLAUDE.md` otherwise. Rules added to a
+file that only points elsewhere are read by the one agent that follows the pointer's
+file and by no other, and those agents are then told nothing of the design, the notes
+or `safe-push`. Bootstrap says which file it chose, because the choice is made from what
+a file contains and a person should see it made. The CI workflow runs on the runner the
+repository's own workflows run on, where they agree on one: a repository that runs
+everything on its own runners may have GitHub's switched off or unpaid for, and a
+required check that never starts blocks every merge. Where they do not agree bootstrap
+does not guess; it keeps the template's runner and says the line is one to check.
 
 #### Alternatives rejected
 
@@ -889,17 +1039,41 @@ and change what refuses its pushes.
   brings an interpreter version and a package environment into every hook. What is
   shell, `bootstrap`, `safe-push`, the two hooks and their installer, parses nothing: each only
   drives git, `gh` and the Go commands.
+- **Always add the rules to `CLAUDE.md`.** Where that file is one line importing
+  `AGENTS.md`, an agent that reads `AGENTS.md` directly never sees them, and through a
+  link the rules land in `AGENTS.md` without anyone having decided it.
+- **Write the rules to both files.** Two copies of one rule, and an agent that reads
+  both through the import is handed them twice.
+- **A flag that replaces whatever is in `harness/`.** One mistyped path deletes a
+  directory of the project's own. An earlier harness is known by what it holds.
+- **Move a project's instructions into one file for it.** They are the project's;
+  adopting overwrites nothing (INV-009).
+- **Copy the first `runs-on:` found, or the commonest.** Where workflows differ, either
+  is a guess, and a guess written without a word is what a person does not think to
+  check.
+- **Copy a list or an expression across.** A matrix's value means nothing outside its
+  job, and a list of labels is copied right only by something that understands every
+  form the key takes.
 
 ### ADR-0006 — Nothing reaches main except through a pull request, and there is one door
 
-Work is pushed with `harness/safe-push`, which never pushes `main` or any branch not
-named `feat/` or `fix/`, moving work found on one to a branch of its own; runs the
-checker, and with it the repository's gate, as CI will; and opens the pull request. The `pre-push` hook refuses a push to `main` however it is issued and runs the
+Work is pushed with `harness/safe-push`, which never pushes `main` or any branch that
+is not a change branch, moving work found on one to a branch of its own; runs the
+checker, and with it the repository's gate, as CI will; and opens the pull request. A
+change branch is named `feat/` or `fix/`, unless the design's frontmatter gives a
+pattern under `branches:`, and then it is a name that matches the pattern. The `pre-push` hook refuses a push to `main` however it is issued and runs the
 checker. A person merges. `hooks/install` refuses to replace hooks a repository already
 uses, and says how to call these from them.
 
 One door because an agent that is told "never push to main" forgets, and one that can
 only push through a script that refuses does not need to remember.
+
+The name is checked because a branch someone else named, the one a cloud session is
+handed, is not named for the change and outlives it. What the name must be is the
+repository's to say: a team that puts a ticket number or a person's name first has
+tools and habits that read it, and a door that refuses its names is a door it will not
+use. The pattern is a value in the design's frontmatter, so that what the door accepts
+is written where the repository's other rules are.
 
 #### Alternatives rejected
 
@@ -909,6 +1083,13 @@ only push through a script that refuses does not need to remember.
   a hook people disable.
 - **Install the hooks over whatever is there.** `core.hooksPath` switches off every
   hook outside it without a word.
+- **`feat/` and `fix/` for every repository.** A repository with a naming rule of its
+  own would have every branch moved to a name its own tools do not read.
+- **A list of prefixes in place of a pattern.** It cannot say "a ticket number first".
+- **Any name but `main`.** The branch a session was handed, reused for change after
+  change, is the case the check exists for.
+- **Move stray work to `feat/` or `fix/` whatever the pattern.** The script would make
+  a branch it then refuses to push.
 
 ### ADR-0007 — The commit convention is asked for by the design, repository by repository
 
@@ -962,6 +1143,10 @@ design.
 - **Have bootstrap edit the root's design and `.gitignore`** to add the new repository.
   They are the root's, changed through the root's own pull request; bootstrap prints
   what to add.
+- **Read a name and an id with a space between, `billing ADR-0007`, as a citation of
+  that repository.** Two forms for one thing, and a sentence that ends in a repository's
+  name before an id of this design's own would be read as another's. The slash is the
+  one form, and the refusal of an id that lands nowhere says so.
 
 ### ADR-0008 — A change starts with a note in four parts, from a date
 
@@ -1002,6 +1187,15 @@ design, and a branch of the contracts repository is a proposal. So a server is n
 held to something that may not land, and a definition and its server can be built in
 either order.
 
+The rules bind where the root's map names a contracts repository, and the map can fail
+to: the kind is a word a person types. A project with definitions, `servers` blocks and
+`serves:` in its designs, whose map calls that repository something else, has every
+rule off and a checker that passes. So the checker says when the rules are off and the
+signs of a contracts repository are there. It says it in a line and refuses nothing,
+because the signs are evidence and not proof: a repository may hold `.proto` files for
+another reason, and a check that is sometimes wrong is switched off (ADR-0002). One
+part needs no map at all and is held everywhere: a test `serves:` names exists.
+
 #### Alternatives rejected
 
 - **A registry of who serves what, kept at the root.** A third place to keep in step
@@ -1010,6 +1204,12 @@ either order.
   check to one format and puts a deployment fact into an interface.
 - **Bind the server from the note alone**, before the definition merges. A server would
   be refused for a field that does not exist yet and might never.
+- **Refuse when the signs are there and the map gives no repository the kind.** A
+  root that keeps `.proto` files for something other than its services' interfaces
+  could not pass without mislabelling a repository.
+- **Find the contracts repository by its name or its files when no entry has the
+  kind.** The map would then say one thing and the checker do another; the kind is the
+  one switch, and the line says to set it.
 - **Skip the check when the contracts repository is not on disk.** In CI that is every
   run of a workflow someone forgot to extend, and a check that is silently skipped is
   believed.
@@ -1219,19 +1419,20 @@ refuses and an area is meant to contain.
 
 | File | Purpose |
 |---|---|
-| `bootstrap` | Adopts the method in a project: copies `harness/`, then adds what is missing and overwrites nothing (INV-009). `--update` replaces a project's harness and keeps its settings. |
-| `harness/FRAMEWORK.md` | The method, written for whoever works in a project that uses it. Its presence is how `bootstrap` knows a `harness/` is this one. |
+| `bootstrap` | Adopts the method in a project: copies `harness/`, then adds what is missing, where the project keeps such things, and overwrites nothing (INV-009). `--update` replaces a project's harness and keeps its settings. |
+| `harness/FRAMEWORK.md` | The method, written for whoever works in a project that uses it. Its presence is how `bootstrap` knows a `harness/` is this one in its current form. |
 | `harness/go.mod`, `harness/go.sum` | The harness's own module, `harness`, with one dependency (ADR-0005). |
-| `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files. |
+| `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files, counts the marks left for a person and knows a skeleton by its mark. |
 | `harness/internal/rules/` | A rule's check (ADR-0015): compiles the entries under `rules:`, finds breaches in a file's content or a command's output, reads and writes the lists of known breaches, and sets one against the other. The checker and the backtest both find a breach through it. |
 | `harness/internal/history/` | Past changes from git (ADR-0016): each first-parent commit with the paths it touched, a file as it was at a commit, and how often groups of paths changed together. |
 | `harness/internal/session/` | Starts a model session through the `claude` tool with exactly the tools it is given; reads a settings file. |
-| `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007). |
-| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. `rules.go` runs the checks of rules (ADR-0015), records known breaches for `-known`, weighs the documents, names the replaced ones still there, and writes the report for `-report`. |
+| `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007); `branch.go`, how a change branch is named here (ADR-0006). |
+| `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files, the two rules of ADR-0010 and the line that says when they are off; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. `rules.go` runs the checks of rules (ADR-0015), records known breaches for `-known`, weighs the documents, names the replaced ones still there, and writes the report for `-report`. |
 | `harness/cmd/backtest/` | The backtest (ADR-0016): `areas.go` scores the areas against past changes, `rules.go` tries each check against them, `report.go` says what was found, as text and as Markdown. |
-| `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
-| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. `main.go` also keeps what a draft took from each existing document in `design/replaces.md`, and hands a draft the rules a person states with `-rules`. |
+| `harness/cmd/coldread/` | The two questions (ADR-0003): refuses a document that is not a design, composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
+| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes; `where.go` what the `where` step works out for `bootstrap`: the rules file, and the runner the repository's workflows run on. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. `main.go` also keeps what a draft took from each existing document in `design/replaces.md`, and hands a draft the rules a person states with `-rules`. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
+| `harness/cmd/branch/` | The command the push script calls to ask whether a name is a change branch's (ADR-0006). |
 | `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the frontmatter's `protection:`, the `gh` tool and what is printed. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
 | `harness/coldread/` | `comprehension.md` and `readiness.md`, the two prompts; `coldread.yaml`, the model and the verdict prefix. |
@@ -1248,6 +1449,7 @@ Paths a fault would travel, and the test that walks each:
 - a source file the design does not account for is refused — `TestEveryFileIsAccountedForOrRefused`
 - a test the design names that does not exist is refused — `TestANamedTestMustExist`
 - an id defined twice, or cited and defined nowhere, is refused — `TestAnIdIsDefinedOnceAndEveryCitationLands`
+- another repository's id written without the slash is refused with nothing to say what form was wanted — `TestACitationWithoutTheSlashIsToldTheFormToUse`
 - a note without one of its parts is refused, and an old note is not reread — `TestADesignNoteCarriesItsParts`
 - a section a repository adds to its notes is required from its date — `TestADesignSaysWhatItsNotesCarry`
 - an unfinished design is reported and not refused — `TestAnUnfinishedDesignIsSaidToBeUnfinished`
@@ -1255,6 +1457,9 @@ Paths a fault would travel, and the test that walks each:
 - a cold-read session is handed the design and the change and nothing else — `TestASessionIsHandedItsPromptTheDesignAndNothingElse`
 - a reply that does not end in the verdict form is not a pass — `TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`
 - a session is started with the tools it was given and no other — `TestASessionIsStartedWithExactlyTheToolsItIsGiven`
+- sessions are spent on a skeleton, and say so only in their verdicts — `TestADocumentThatIsNotADesignIsRefusedBeforeAnySessionIsStarted`
+- a draft with marks in it is refused as no design, or a README under frontmatter is taken for one — `TestADocumentThatIsNotADesignIsKnownWithoutAskingASession`
+- a design that speaks of the skeleton's mark is taken for a skeleton, and a draft replaces it — `TestASkeletonIsKnownByItsMarkOnALineOfItsOwn`
 - a survey invents nothing and misses no file — `TestTheSurveySaysWhatIsThereAndDecidesNothing`
 - a skeleton passes the checker and switches nothing on — `TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn`
 - a reply that is not a design is refused, not half written — `TestADraftIsReadAsTheDesignAndTheRules`
@@ -1275,6 +1480,8 @@ Paths a fault would travel, and the test that walks each:
 - a new definition no note lists with a server on the map is refused — `TestANewDefinitionIsListedWithItsServer`
 - a merged definition whose server names no test is refused there, and so is a contracts repository that cannot be read — `TestAListedDefinitionIsRefusedUntilItsServerNamesATest`
 - a definition that has not merged binds no server — `TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges`
+- the contracts rules are off for want of a kind on the map, and the checker says OK and no more — `TestTheContractsRulesSayWhenTheyAreOff`
+- a test `serves:` names does not exist, and passes because no contracts repository was found — `TestATestServesNamesExistsWhateverTheMapSays`
 - a change branch that passes is pushed, and main does not move — `TestAChangeBranchThatPassesIsPushed`
 - work on main or a stray branch is moved to a change branch before it is pushed — `TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed`
 - new work on a branch whose pull request has landed is moved to a branch of its own — `TestABranchAlreadyMergedIsNotPushedToAgain`
@@ -1282,12 +1489,19 @@ Paths a fault would travel, and the test that walks each:
 - a branch that conflicts with main is refused, with the file named — `TestABranchThatDoesNotMergeCleanlyIsRefused`
 - a branch the checker refuses is not pushed — `TestABranchTheCheckerRefusesIsNotPushed`
 - a title that is not conventional is refused where the design asks for them — `TestATitleThatIsNotConventionalIsRefusedWhereTheDesignAsks`
+- a branch named as the design asks is moved, or stray work is moved to a name the script then refuses — `TestABranchIsNamedAsTheDesignAsksAndStrayWorkIsMovedOnlyToSuchAName`
+- a name that matches part of the pattern passes, or a pattern that does not compile is read as no rule — `TestAChangeBranchIsNamedAsTheDesignAsksOrFeatOrFix`
 - a branch's protection that lacks a pull request, the check or the refusal of a force push is named for each, whichever of the two places holds them — `TestAProtectionThatLacksSomethingIsNamedForIt`
 - a protection the server does not show, or a server that cannot be asked, is not read as a branch with none — `TestAProtectionThatCannotBeReadIsNotTakenForNone`
 - setting sends back what was there with what was lacking added, and writes over nothing it could not read whole — `TestSettingAddsWhatIsLackingAndChangesNothingElse`
 - a repository that has not asked has nothing read — `TestProtectionIsReadOnlyWhereTheDesignAsks`
 - a push is refused while the server's protection lacks something, where the design asks — `TestAPushIsRefusedWhileTheServersProtectionLacksSomething`
 - an update replaces the harness and the method's rules, and nothing that is the project's — `TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`
+- an update refuses the harness it exists to replace, or tells a project with a design to draft one — `TestAnUpdateReplacesAnEarlierHarnessAndSaysWhatAnUpdateLeavesToDo`
+- the method's rules added to a `CLAUDE.md` that only points at `AGENTS.md` are read by one agent and no other — `TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive`
+- a `CLAUDE.md` with rules of its own is taken for a pointer, or a pointer for rules — `TestTheRulesFileIsTheOneThatHoldsTheInstructions`
+- a CI workflow written for a runner the repository does not use, with nothing said — `TestTheWorkflowRunsWhereTheRepositorysWorkflowsRun`
+- a list, an expression or two runners is taken for one runner — `TestTheRunnerIsReadFromTheWorkflowsThatAreThere`
 - a design divided into areas passes, with each file counted once — `TestADesignDividedIntoAreasPasses`
 - an area with no spine, or a spine with no area, is refused — `TestAnAreaHasASpineAndASpineHasAnArea`
 - a file two areas hold is refused, and so is one nothing holds — `TestAFileIsUnderOneSpine`
