@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"harness/internal/design"
@@ -211,12 +214,15 @@ func checkNamed(repo *design.Repo, doc string, names []string, mine func(string)
 		res.fail("%s names %d test(s) but accounts for no test file", doc, len(names))
 		return
 	}
+	var wanted []string
 	for _, name := range names {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
+		if name = strings.TrimSpace(name); name != "" {
+			wanted = append(wanted, name)
 		}
-		if !definedIn(repo.Root, tests, name) {
+	}
+	found := definedAmong(repo.Root, tests, wanted)
+	for _, name := range wanted {
+		if !found[name] {
 			res.fail("%s names the test %s, which is in no test file it accounts for", doc, name)
 		}
 	}
@@ -225,20 +231,70 @@ func checkNamed(repo *design.Repo, doc string, names []string, mine func(string)
 // definedIn reports whether name appears as a whole word in any of the files:
 // a Go func, a Python def, or a name a runner is given as a string.
 func definedIn(root string, files []string, name string) bool {
-	word, err := regexp.Compile(`(^|\W)` + regexp.QuoteMeta(name) + `($|\W)`)
-	if err != nil {
-		return false
+	return definedAmong(root, files, []string{name})[name]
+}
+
+// definedAmong is which of the names appear as a whole word in any of the
+// files. Each file is read once, whatever the number of names, and the
+// files are read by as many hands as there are processors: a repository may
+// name hundreds of tests and keep thousands of test files.
+func definedAmong(root string, files, names []string) map[string]bool {
+	found := map[string]bool{}
+	if len(names) == 0 {
+		return found
+	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	next := make(chan string)
+	for w := 0; w < runtime.NumCPU(); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for f := range next {
+				b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+				if err != nil {
+					continue
+				}
+				for _, name := range names {
+					mu.Lock()
+					done := found[name]
+					mu.Unlock()
+					if !done && wholeWord(b, name) {
+						mu.Lock()
+						found[name] = true
+						mu.Unlock()
+					}
+				}
+			}
+		}()
 	}
 	for _, f := range files {
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
-		if err != nil {
-			continue
+		next <- f
+	}
+	close(next)
+	wg.Wait()
+	return found
+}
+
+// wholeWord reports whether name is in b with no letter, digit or underscore
+// against either end of it.
+func wholeWord(b []byte, name string) bool {
+	word := func(c byte) bool {
+		return c == '_' || c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z'
+	}
+	n := []byte(name)
+	for at := 0; ; {
+		i := bytes.Index(b[at:], n)
+		if i < 0 {
+			return false
 		}
-		if word.Match(b) {
+		i += at
+		end := i + len(n)
+		if (i == 0 || !word(b[i-1])) && (end == len(b) || !word(b[end])) {
 			return true
 		}
+		at = i + 1
 	}
-	return false
 }
 
 // --- ids ---

@@ -19,8 +19,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"harness/internal/design"
@@ -291,6 +293,15 @@ func Evaluate(repo *design.Repo, list []*Rule) (map[*Rule][]Finding, map[*Rule]e
 	if len(patterns) == 0 {
 		return found, failed
 	}
+	// The files are read by as many hands as there are processors, and
+	// what each found is put back in the files' order, so that a run says
+	// the same thing every time.
+	type job struct {
+		at      int
+		file    string
+		readers []*Rule
+	}
+	var jobs []job
 	for _, f := range repo.Files {
 		var readers []*Rule
 		for _, r := range patterns {
@@ -298,15 +309,41 @@ func Evaluate(repo *design.Repo, list []*Rule) (map[*Rule][]Finding, map[*Rule]e
 				readers = append(readers, r)
 			}
 		}
-		if len(readers) == 0 {
-			continue
+		if len(readers) > 0 {
+			jobs = append(jobs, job{len(jobs), f, readers})
 		}
-		content, err := os.ReadFile(filepath.Join(repo.Root, filepath.FromSlash(f)))
-		if err != nil {
-			continue
-		}
-		for _, r := range readers {
-			found[r] = append(found[r], r.Scan(f, content)...)
+	}
+	results := make([]map[*Rule][]Finding, len(jobs))
+	next := make(chan job)
+	var wg sync.WaitGroup
+	for w := 0; w < runtime.NumCPU(); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range next {
+				content, err := os.ReadFile(filepath.Join(repo.Root, filepath.FromSlash(j.file)))
+				if err != nil {
+					continue
+				}
+				for _, r := range j.readers {
+					if f := r.Scan(j.file, content); len(f) > 0 {
+						if results[j.at] == nil {
+							results[j.at] = map[*Rule][]Finding{}
+						}
+						results[j.at][r] = f
+					}
+				}
+			}
+		}()
+	}
+	for _, j := range jobs {
+		next <- j
+	}
+	close(next)
+	wg.Wait()
+	for _, res := range results {
+		for _, r := range patterns {
+			found[r] = append(found[r], res[r]...)
 		}
 	}
 	return found, failed
