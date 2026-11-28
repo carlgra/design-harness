@@ -252,7 +252,8 @@ day and refuse from it.
 
 **See what it finds.** Every run prints a line to a rule: new, known, in force or
 warning. `check -report <file>` writes the same as Markdown for a pull request, and in
-a GitHub workflow the report is the job's summary without being asked.
+a GitHub workflow the report is the job's summary without being asked. `safe-push` puts
+it in the pull request's body.
 
 The same command scores the areas. With `spines:` defined, `backtest` says how many
 past changes stayed inside one area, which areas keep changing together, and which

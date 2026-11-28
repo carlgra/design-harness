@@ -196,7 +196,8 @@ reports what it finds as warnings before that day and refuses from it. Where the
 change's merge base with the default branch can be read, an entry added to an existing
 list since then is said as a warning for whoever merges. `check -report <file>` writes
 the run as Markdown, each rule with what is new, what is known, and what the change
-mended or added, and appends the same to a GitHub job's summary where there is one.
+mended or added, and appends the same to a GitHub job's summary where there is one. `safe-push` puts
+that report in the pull request's body where the design gives any rule a check.
 
 The checker also weighs each document, says the size of the design and of the largest
 spine on every run, and warns of one over `size:` lines, 600 where the design sets

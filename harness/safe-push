@@ -275,7 +275,11 @@ fi
 # --------------------------------------------------------------------------
 step "Validation (mirrors .github/workflows/harness.yml)"
 go -C "$HARNESS" vet ./... || die "go vet failed. Nothing pushed."
-go -C "$HARNESS" run ./cmd/check || die "The checker failed. Nothing pushed."
+# The run is kept as a report: where the design gives a rule a check, the pull
+# request carries what each rule found in this change.
+REPORT="$(mktemp)"
+trap 'rm -f "$REPORT"' EXIT
+go -C "$HARNESS" run ./cmd/check -report "$REPORT" || die "The checker failed. Nothing pushed."
 
 # --------------------------------------------------------------------------
 step "Subject"
@@ -351,6 +355,9 @@ if [ -n "$EXISTING" ]; then
   echo "  (the push above updated it)"
 else
   PR_BODY=$(git log "origin/$MAIN..$BRANCH" --format='### %s%n%n%b')
+  if grep -q '^| Rule |' "$REPORT" 2>/dev/null; then
+    PR_BODY=$(printf '%s\n\n%s\n' "$PR_BODY" "$(cat "$REPORT")")
+  fi
   if [ -n "${PR_FOOTER:-}" ]; then
     PR_BODY=$(printf '%s\n\n%s\n' "$PR_BODY" "$PR_FOOTER")
   fi
