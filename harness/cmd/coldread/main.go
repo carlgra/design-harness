@@ -17,6 +17,10 @@
 // It prints each verdict with the session's reasons and writes them as
 // markdown to -out, to paste into the pull request. A verdict is advice for
 // the person who merges; the person decides.
+//
+// A document that is not a design, a skeleton nobody has drafted, one that
+// accounts for no files or one without the sections that hold what governs,
+// is refused before any session is started, with what to do first.
 package main
 
 import (
@@ -67,10 +71,6 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	harness, err := design.FindHarness(root)
-	if err != nil {
-		fatal(err)
-	}
 	main, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(design.DocPath)))
 	if err != nil {
 		fatal(err)
@@ -78,6 +78,18 @@ func main() {
 	head, reading, err := handed(repo, string(main), *spineFlag)
 	if err != nil {
 		fatal(err)
+	}
+	harness, err := design.FindHarness(root)
+	if err != nil {
+		fatal(err)
+	}
+	// A DOCUMENT THAT IS NOT A DESIGN IS REFUSED HERE, before a session is
+	// started or anything else is asked for. A session handed one says so
+	// only in its verdict, as an ordinary FAIL, after it has been paid for.
+	if why, first := notADesign(repo, string(main), *spineFlag, design.Rel(root, harness)); why != "" {
+		fmt.Fprintf(os.Stderr, "coldread: no design to test, and no session was started: %s.\n", why)
+		fmt.Fprintf(os.Stderr, "coldread: first, %s. Then ask again.\n", first)
+		os.Exit(2)
 	}
 
 	s, err := loadSettings(harness)
@@ -171,6 +183,74 @@ func loadTests(harness, only string) ([]test, error) {
 		return nil, fmt.Errorf("-only %q is not one of %s", only, strings.Join(testNames, ", "))
 	}
 	return tests, nil
+}
+
+// governing are the sections a document must have to be a design: where its
+// invariants are, where its decisions are, and which files realise them.
+var governing = []string{"What must always hold", "Decisions", "Files"}
+
+// notADesign says why there is no design here to put to a session, and what
+// to do first, or "" when there is one. It looks at the document and judges
+// nothing in it: a skeleton nobody has drafted, known by the line it
+// carries; frontmatter that accounts for no file; or a document without the
+// sections that hold what governs. A design with marks still in it is a
+// design, and a cold read is how a draft is tried. harness is the way to
+// the harness from the repository, for the commands it names.
+func notADesign(repo *design.Repo, main, spine, harness string) (why, first string) {
+	draft := "go -C " + harness + " run ./cmd/reverse draft"
+	switch {
+	case design.IsSkeleton(main):
+		return design.DocPath + " is still a skeleton, with every section a question",
+			"draft it with  " + draft + "  and answer each " + design.Unfinished + " it leaves"
+	case len(repo.Design.Files) == 0 && len(repo.Design.Spines) == 0:
+		return design.DocPath + " accounts for no files: files: in its frontmatter is empty, so it is the design of no code",
+			"list the code it governs under files:, or move it aside and start from a skeleton with  go -C " + harness + " run ./cmd/reverse skeleton  and then  " + draft
+	}
+	if missing := missingSections(main, governing); len(missing) > 0 {
+		return fmt.Sprintf("%s has no section %s, so it does not say what governs the code", design.DocPath, strings.Join(missing, ", ")),
+			"write them, to the shape in " + harness + "/templates/DESIGN.md; over a skeleton,  " + draft + "  writes a first version"
+	}
+	if spine != "" {
+		if sp := repo.Spine(spine); sp != nil && design.IsSkeleton(sp.Doc) {
+			return sp.Path + " is still a skeleton, with every section a question",
+				"draft it with  " + draft + " -spine " + spine + "  and answer each " + design.Unfinished + " it leaves"
+		}
+	}
+	return "", ""
+}
+
+// missingSections are the names among want that no heading of the document
+// opens with, case and a leading "The" aside, as a note's sections are
+// matched. A heading inside a code fence is an example and not a section.
+func missingSections(doc string, want []string) []string {
+	var titles []string
+	fenced := false
+	for _, line := range strings.Split(doc, "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "```") {
+			fenced = !fenced
+			continue
+		}
+		if fenced || !strings.HasPrefix(t, "#") {
+			continue
+		}
+		title := strings.ToLower(strings.TrimSpace(strings.TrimLeft(t, "#")))
+		titles = append(titles, strings.TrimPrefix(title, "the "))
+	}
+	var missing []string
+	for _, w := range want {
+		found := false
+		for _, title := range titles {
+			if strings.HasPrefix(title, strings.ToLower(w)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, `"`+w+`"`)
+		}
+	}
+	return missing
 }
 
 // handed is the document a session is given, and the files it is made of:

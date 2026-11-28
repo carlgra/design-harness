@@ -31,6 +31,7 @@ memory too.
 ```
 README.md            what this is and why it exists
 CLAUDE.md            how an agent works here: the rules, and the project's own
+                     (in AGENTS.md, where CLAUDE.md only points at it)
 design/DESIGN.md     the design, with its frontmatter
 design/spines/       in a large repository: one document per area of the code, its spine
 design/changes/      one short note per change: problem, plan, alternatives, files
@@ -81,6 +82,8 @@ How it is written:
 - **Ids are kept for life.** A decision is `ADR-0007`, an invariant `INV-012`, and each
   keeps its number however much its text changes, so that a citation always lands. A
   retired id is never reused. Another repository's is cited by name: `platform/ADR-0029`.
+  The form is the name, a slash and the id, with nothing between: `platform ADR-0029`,
+  with a space, is read as this design's own id, and refused if it defines none.
 - **A decision states a constraint, never a value.** Where it depends on a number or a
   string, it says what the value must satisfy and names the file the value lives in.
   Tuning the value is then a code change, and the design does not go stale.
@@ -104,16 +107,26 @@ How it is written:
 ---
 files:                 # the code this design accounts for
   - cmd/**             #   a trailing /** is everything under a directory
-  - internal/**
+  - internal/**        #   ** as a path element is any number of directories
   - go.mod             #   otherwise a path, in which * does not cross a /
 tests:                 # tests that must exist, by name
   - TestAnEmptyCartIsRefused
 validate: make test    # the repository's own gate, run after the checks pass (optional)
 commits: conventional  # a commit's subject is a Conventional Commit (optional)
+branches: '[A-Z]+-[0-9]+/.+'  # how a change branch is named, if not feat/ or fix/ (optional)
 protection: required   # the server's protection of main is read before every push (optional)
 notes:                 # what a note under design/changes/ carries
   from: 2026-01-31     #   notes dated before this are never reread
   sections: [Problem, Plan, Alternatives rejected, Files]
+rules:                 # the check of a rule this document states (optional); see below
+  - id: INV-002
+    files: ['src/**']
+    except: [src/billing/**]
+    forbid: 'from "(\.\./)+billing/'
+    from: 2027-01-01   #   before this day it reports; from it, it refuses
+size: 600              # lines above which the checker says a document is too long (optional)
+replaces:              # documents the design took its rules from, to be retired (optional)
+  - docs/ARCHITECTURE.md
 ---
 ```
 
@@ -121,6 +134,11 @@ notes:                 # what a note under design/changes/ carries
 root need no entry, and nothing under `design/` does. What git ignores is not looked at.
 A repository asks more of its notes by adding a heading to `sections:`, for instance
 `What existing data changes meaning` where a change can alter what stored data means.
+`branches:` is a regular expression, and a change branch's whole name must match it: the
+one above accepts `SHOP-12/a-fourth-line` and refuses `feat/a-fourth-line`. `safe-push`
+pushes a branch named so and no other. Work it finds on `main` or a stray branch it moves
+to a name it can build that matches, and where it can build none it stops and says what
+to type.
 
 ## Spines: a large repository, one area at a time
 
@@ -180,6 +198,69 @@ large repository, proposes the areas and writes each one's skeleton.
 
 A repository with no `spines:` is one document, and nothing above applies to it.
 
+## Rules: stating one, trying it, adopting it
+
+A design's first rules are read out of the code. The ones that matter most are often
+the ones the code does not keep yet: a person states them, and the code is brought to
+them. A rule is written where every rule is, as an invariant or a decision in the body,
+in words, with its reason. What holds the code to it is a check under `rules:`, by the
+rule's id, in the design or in the spine that states it:
+
+| Check | A breach is |
+|---|---|
+| `forbid: <regular expression>` | a line that matches |
+| `require: <regular expression>` | a file with no line that matches |
+| `absent: [globs]` | a file under one of them |
+| `run: <command>` | a line the command prints; the repository's own linter, say |
+
+`files:` and `except:` say which files a pattern reads. A spine's check reads its own
+area only. A command should print `path:line: what is wrong`; the line number is not
+part of what a breach is known by, so a breach stays the same breach as the file
+changes around it.
+
+**Try it first.** Before anyone is held to a rule, ask what it would have refused:
+
+```
+go -C harness run ./cmd/backtest -forbid 'from "(\.\./)+billing/' -files 'src/**' -except 'src/billing/**'
+go -C harness run ./cmd/backtest -rule INV-002      # once it is in the design
+```
+
+It reads the last 200 changes (`-n` for more) and says which of them added a breach,
+with the lines, how many files the check reads, and how many breaches there were before
+and are now. A rule that would have refused a quarter of the changes is how the code is
+written, not a rule the code keeps. A rule that reads no file, or found nothing ever,
+may be checking nothing. Adjust the pattern, or `except:`, until what it catches is
+what you mean.
+
+**Adopt it with what is there known.** A large repository already breaks a new rule in
+many places. Record them:
+
+```
+go -C harness run ./cmd/check -known INV-002
+```
+
+writes `design/rules/INV-002.known`, one breach to a line. From then on the checker
+allows those and refuses every other. The list only shrinks: when a breach is mended
+the checker refuses until it is taken off the list, with `check -known` again, and
+`check -known` never adds one. A listed breach whose file is renamed, or whose line is
+moved to another file, is the same breach: the checker says it moved, and `check -known`
+follows it. So the rule holds for every new line from the first day,
+and the old breaches are a list that is worked down and cannot grow back.
+
+**Warn first, if you like.** `from: 2027-01-01` on a check makes it report until that
+day and refuse from it.
+
+**See what it finds.** Every run prints a line to a rule: new, known, in force or
+warning. `check -report <file>` writes the same as Markdown for a pull request, and in
+a GitHub workflow the report is the job's summary without being asked. `safe-push` puts
+it in the pull request's body.
+
+The same command scores the areas. With `spines:` defined, `backtest` says how many
+past changes stayed inside one area, which areas keep changing together, and which
+directories no area holds change most. An area is a part a change can stay inside; if
+two areas move together more often than not, they are one area, or they share a rule
+that belongs in the design.
+
 ## What the machine checks, and what it does not
 
 `go -C harness run ./cmd/check` refuses, with a line saying what and where:
@@ -193,10 +274,23 @@ A repository with no `spines:` is one document, and nothing above applies to it.
    *(where the design defines areas)* an area with no spine or a spine with no area, a
    file under two areas, a test a spine names that is not in its area, and a citation of
    another document's id that the document does not define;
-4. a note, dated from `notes: from:`, that lacks one of its sections or leaves one empty.
+4. a note, dated from `notes: from:`, that lacks one of its sections or leaves one empty;
+5. *(where a rule has a check)* a breach that is not on the rule's list, from the rule's
+   day; an entry of the list that is mended and still listed; and a check that names an
+   id its document does not define.
+
+It says, and does not refuse: a breach before its rule's day, a document over `size:`
+lines (600 where the design sets none), an entry added to a list of known breaches in
+this change, and a document under `replaces:` that is still on disk.
 
 Then it runs `validate:`. There are always two fixes: amend the design, or change the
 code.
+
+It also says two things without refusing: how many places a design still says
+`TODO(design)`, and, under a root, that the contracts rules are off when no entry of
+the root's map has `kind: contracts` and a design has `serves:`, a note has a `servers`
+block, or a listed repository holds `.proto` files. A test that `serves:` names must
+exist either way.
 
 That is all. It does not judge whether the design is good, whether a decision's reason
 holds, or whether a test proves what its name says. Those are read by a person at review,
@@ -210,7 +304,8 @@ is sometimes wrong is switched off.
 2. **Write the note.** `design/changes/<date>-<slug>.md`, from
    `harness/templates/change.md`: the problem, the plan, the alternatives rejected, and
    the files to change and why. Short. It is kept.
-3. **Branch.** `feat/<what>` or `fix/<what>`. Never commit on `main`.
+3. **Branch.** `feat/<what>` or `fix/<what>`, or as the frontmatter's `branches:` says.
+   Never commit on `main`.
 4. **Make the design say what will be true**, then make the code agree with it. A new file
    goes under a glob in `files:`. A new rule gets an invariant and the test that proves
    it, named in `tests:`.
@@ -236,6 +331,12 @@ Two questions, each put to its own fresh session with no tools, handed the promp
 Each ends its reply with `VERDICT: PASS` or `VERDICT: FAIL`. The script reads that line
 and judges nothing itself.
 
+A document that is not yet a design is refused before any session is started: a
+skeleton nobody has drafted, one whose frontmatter accounts for no files, or one with no
+section for what must always hold, for decisions or for files. The command says which
+it found and what to do first. A draft with `TODO(design)` still in it is a design, and
+is read.
+
 **It is advice, not a gate.** A FAIL is a list of what the document does not say. Most of
 the time the right response is to mend the document and ask again; sometimes the session
 is wrong, and the person who merges says so. The verdicts go on the pull request for that
@@ -254,8 +355,24 @@ A repository that existed before the method has a design; it is only not written
 |---|---|---|
 | `reverse survey` | Lists what a machine can see: the files and the globs that account for them, languages, test files and names, the command the repository proves itself with, the documents that may record decisions, CI, whether the history follows a commit convention. | Nothing. |
 | `reverse skeleton` | Writes `design/DESIGN.md` with frontmatter that accounts for every file as it stands, so the checker passes at once, and a body whose every section is a question. | Nothing: `validate:` and `commits:` are written as comments. |
-| `reverse draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
+| `reverse draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`, or of `AGENTS.md` where `CLAUDE.md` only points at it. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
 | a person | Reads every line. Answers each `(inferred)` and each `TODO(design)`. Switches on `validate:`. | Everything. |
+
+`reverse draft -rules <file>` hands the session rules you state, in your words: each is
+written as an invariant whether or not the code keeps it yet, and marked where it does
+not. The survey lists the directories that changed in the same changes, which is what
+an area's boundary is drawn from. A session writes no `rules:` checks: those are yours
+to add, once tried.
+
+Where the repository already has architecture documents, standing rules or decision
+records, the draft brings what they govern into the design, lists each such document
+under `replaces:`, and ends with what it took from each and what it left, kept in
+`design/replaces.md`. Adoption is finished when a person has checked that list, retired
+each old document or cut it down to what the design does not hold, and emptied
+`replaces:`; until then the checker names every one still there. The same holds for a
+practice of writing a proposal for each change: from `notes: from:` the record of a
+change is its note under `design/changes/`, and the adoption note says what it
+replaces.
 
 `reverse prompt` prints what the drafting session is handed, to give to an agent of your
 own instead.
@@ -356,11 +473,16 @@ harness and sets all of the above up, then prints the entry to add to the root's
 ```
 go -C harness run ./cmd/check                    # the checks, then the repository's own gate
 go -C harness run ./cmd/check -validate=false    # the checks only
+go -C harness run ./cmd/check -known INV-002     # adopt a rule: record the breaches in the tree as known
+go -C harness run ./cmd/check -report out.md     # the run as a report for a pull request
+go -C harness run ./cmd/backtest                 # the areas and every rule, against the last 200 changes
+go -C harness run ./cmd/backtest -forbid '...' -files 'src/**'   # a rule not yet written down
 go -C harness run ./cmd/coldread -change "..."   # two fresh sessions read the design
 go -C harness run ./cmd/coldread -only comprehension
 go -C harness run ./cmd/reverse survey          # what a machine can see
 go -C harness run ./cmd/reverse draft           # draft the design from the code
 go -C harness run ./cmd/subject "fix: ..."       # is this subject a Conventional Commit
+go -C harness run ./cmd/branch feat/a-thing      # is this name a change branch's here
 harness/safe-push                                # check, push, open the pull request
 harness/safe-push --no-pr                        # push only
 harness/safe-push --tag v1.2.0                   # tag main's tip, as merged

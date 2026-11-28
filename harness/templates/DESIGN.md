@@ -14,6 +14,9 @@ tests: []
 {{VALIDATE}}
 # A commit's subject, and so a pull request's title, is a Conventional Commit.
 {{COMMITS}}
+# How a change branch is named, where that is not feat/<what> or fix/<what>:
+# a regular expression the whole name must match. safe-push pushes no other.
+# branches: '[A-Z]+-[0-9]+/.+'
 # The server's protection of the default branch is read before every push
 # (GitHub, through gh). Take the # off once main is protected.
 # protection: required
@@ -28,6 +31,26 @@ notes:
 # spines:
 #   - name: checkout
 #     files: [src/checkout/**]
+# The check of a rule this document states, by the id of its invariant or
+# decision: a pattern no line may match (forbid:), a pattern every file must
+# hold (require:), paths no file may be at (absent:), or a command whose
+# every line of output is a breach (run:). files: and except: say where it
+# looks. Before the day in from: it reports and refuses nothing. Breaches
+# already in the tree are recorded with `check -known`, allowed, and may only
+# shrink; `backtest` says what the check would have refused in past changes.
+# rules:
+#   - id: INV-002
+#     files: ['src/**']
+#     except: [src/billing/**]
+#     forbid: 'from "(\.\./)+billing/'
+#     from: 2027-01-01
+# The number of lines above which the checker says this document, or a
+# spine, has outgrown what is read before a change. Without it, 600.
+# size: 600
+# Documents this design took its rules from, each to be retired: the checker
+# names every one still there.
+# replaces:
+#   - docs/ARCHITECTURE.md
 {{REPOS}}
 ---
 
@@ -87,7 +110,8 @@ makes that due. None is accepted as final.
 
 A change starts with a note under `design/changes/<date>-<slug>.md`: the
 problem, the plan, the alternatives rejected, and the files to change and why.
-Work happens on a `feat/` or `fix/` branch, never on `main`. `harness/safe-push`
+Work happens on a change branch, `feat/<what>` or `fix/<what>` unless `branches:` in the
+frontmatter says otherwise, never on `main`. `harness/safe-push`
 runs the checker and the repository's own gate, pushes the branch and opens the
 pull request; CI runs the checker again, and `main` is protected behind it. A
 person merges. The change ends with this document saying what is now true.

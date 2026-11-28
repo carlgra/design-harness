@@ -32,14 +32,20 @@ decision there applies here unchanged. The method is in `{{HARNESS}}/FRAMEWORK.m
    it, and the repository that serves one names a test for it under `serves:` in its
    design. The checker refuses either half that is missing.
 5. **Never commit on `main`, and never run `git push`.** Branch first, `feat/<what>` or
-   `fix/<what>`, and push with `{{HARNESS}}/safe-push`, from here, which runs the checker
-   and opens the pull request. A person merges.
+   `fix/<what>`, or as `branches:` in this design's frontmatter says where it is set, and
+   push with `{{HARNESS}}/safe-push`, from here, which runs the checker and opens the
+   pull request. A person merges.
 6. **A new decision is recorded; a change within the decisions in force is not one.** Add
    or amend a decision in `design/DESIGN.md` only when something is newly decided, reversed
    or renamed. Tuning a value a decision already constrains is code. Only what
    must be governed goes in the design: a choice inside one function or file, which
    whoever edits it can see and change safely, stays in the code.
-7. **Anything found and not finished is an issue before the conversation ends**, in the
+7. **A rule's breach is mended, never listed.** Where the checker refuses a breach of a
+   rule (`rules:` in the design or a spine), change the code. The lists under
+   `design/rules/` hold the breaches that were there when a rule was adopted and only
+   shrink: never add a line to one, and when you mend a listed breach run
+   `go -C {{HARNESS}} run ./cmd/check -known` to take it off.
+8. **Anything found and not finished is an issue before the conversation ends**, in the
    repository whose scope it falls in, with what was seen and what it needs.
 
 ## Before you build

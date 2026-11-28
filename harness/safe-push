@@ -3,8 +3,10 @@
 # The only way this repository is pushed.
 #
 # Refuses main, any branch already merged, and any branch that is not a
-# change branch (feat/ or fix/), moving the work to a feat/ or fix/ branch
-# named for it: one branch per change, whatever branch the work began on;
+# change branch, moving the work to a change branch named for it: one branch
+# per change, whatever branch the work began on. A change branch is feat/ or
+# fix/, or, where the design's frontmatter sets `branches:`, a name matching
+# that pattern;
 # requires a clean tree so what was validated is what is pushed; runs the
 # validation CI runs; refuses a pull request title that is not a Conventional
 # Commit, where the design asks for them; reads the server's protection of
@@ -107,20 +109,25 @@ The first commit of a new repository is pushed by hand, once; everything after i
 # Three ways a branch is not fit to push:
 #
 #   main      protected; nothing reaches it except through a pull request.
-#   other     not feat/<what> or fix/<what>: a branch someone else named, such
-#             as the one a cloud session is handed, which is not named for the
-#             change and outlives it.
+#   other     not a change branch: one someone else named, such as the one a
+#             cloud session is handed, which is not named for the change and
+#             outlives it. A change branch is feat/<what> or fix/<what>, unless
+#             the design's frontmatter says otherwise with `branches:`, a
+#             regular expression the whole name must match. cmd/branch reads
+#             it and does the matching; this script matches nothing itself.
 #   merged    origin/<branch> is already an ancestor of origin/main, so its PR
 #             landed and new commits on it are invisible until someone notices.
 #
 # The merged test is on the REMOTE ref. The local tip is deliberately not
 # used: adding a commit moves it past main and would make a merged branch
 # look fresh, which is precisely the case that needs catching.
+command -v go >/dev/null 2>&1 || die "The Go toolchain is not installed; the harness cannot run."
+NAMED=$(go -C "$HARNESS" run ./cmd/branch -form) || die "What a change branch is called here could not be read. Nothing pushed."
+is_change_branch() { go -C "$HARNESS" run ./cmd/branch "$1" >/dev/null 2>&1; }
 MIGRATE_REASON=""
 case "$BRANCH" in
   "$MAIN"|main|master) MIGRATE_REASON="$BRANCH is protected; nothing reaches it except through a pull request" ;;
-  feat/?*|fix/?*) ;;
-  *) MIGRATE_REASON="$BRANCH is not a change branch; each change gets its own feat/ or fix/ branch" ;;
+  *) is_change_branch "$BRANCH" || MIGRATE_REASON="$BRANCH is not a change branch; each change gets its own, named $NAMED" ;;
 esac
 if [ -z "$MIGRATE_REASON" ] && git rev-parse --verify --quiet "origin/$BRANCH" >/dev/null 2>&1; then
   if git merge-base --is-ancestor "origin/$BRANCH" "origin/$MAIN"; then
@@ -163,11 +170,28 @@ if [ -n "$MIGRATE_REASON" ]; then
     SLUG=$(printf '%s' "$SLUG" | cut -c1-45 | sed 's/-[a-z0-9]*$//; s/-$//')
   fi
   [ -n "$SLUG" ] || SLUG="work"
-  NEW="$PREFIX/$SLUG"
+  # THE NAME MUST BE ONE THIS REPOSITORY ACCEPTS. feat/<slug> or fix/<slug>
+  # is tried first, then the slug alone, for a repository whose pattern has
+  # no prefix. Where neither matches, the pattern asks for something this
+  # script cannot know, a ticket number or a person's name, and it refuses
+  # here, before anything is stashed or moved, and says what to type.
+  cannot_name() {
+    die "$OLD_BRANCH cannot be pushed, and safe-push cannot name a branch for this work:
+here a change branch is named $NAMED.
+Start one yourself, then re-run:  git switch -c <a name that matches>
+Nothing moved, nothing pushed."
+  }
+  STEM=""
+  for candidate in "$PREFIX/$SLUG" "$SLUG"; do
+    if is_change_branch "$candidate"; then STEM="$candidate"; break; fi
+  done
+  [ -n "$STEM" ] || cannot_name
+  NEW="$STEM"
   n=2
   while git rev-parse --verify --quiet "$NEW" >/dev/null 2>&1; do
-    NEW="$PREFIX/$SLUG-$n"; n=$((n + 1))
+    NEW="$STEM-$n"; n=$((n + 1))
   done
+  [ "$NEW" = "$STEM" ] || is_change_branch "$NEW" || cannot_name
 
   echo "  moving the work to: $NEW"
   if [ -n "$CARRIED" ]; then
@@ -250,9 +274,12 @@ fi
 
 # --------------------------------------------------------------------------
 step "Validation (mirrors .github/workflows/harness.yml)"
-command -v go >/dev/null 2>&1 || die "The Go toolchain is not installed; the checker cannot run."
 go -C "$HARNESS" vet ./... || die "go vet failed. Nothing pushed."
-go -C "$HARNESS" run ./cmd/check || die "The checker failed. Nothing pushed."
+# The run is kept as a report: where the design gives a rule a check, the pull
+# request carries what each rule found in this change.
+REPORT="$(mktemp)"
+trap 'rm -f "$REPORT"' EXIT
+go -C "$HARNESS" run ./cmd/check -report "$REPORT" || die "The checker failed. Nothing pushed."
 
 # --------------------------------------------------------------------------
 step "Subject"
@@ -328,6 +355,9 @@ if [ -n "$EXISTING" ]; then
   echo "  (the push above updated it)"
 else
   PR_BODY=$(git log "origin/$MAIN..$BRANCH" --format='### %s%n%n%b')
+  if grep -q '^| Rule |' "$REPORT" 2>/dev/null; then
+    PR_BODY=$(printf '%s\n\n%s\n' "$PR_BODY" "$(cat "$REPORT")")
+  fi
   if [ -n "${PR_FOOTER:-}" ]; then
     PR_BODY=$(printf '%s\n\n%s\n' "$PR_BODY" "$PR_FOOTER")
   fi

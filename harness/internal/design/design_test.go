@@ -87,3 +87,48 @@ func TestTheMarksLeftForAPersonAreCountedOneWay(t *testing.T) {
 		t.Fatalf("a body alone is counted too: got %d", n)
 	}
 }
+
+func TestAGlobReachesThroughDirectories(t *testing.T) {
+	for _, tc := range []struct {
+		glob, path string
+		want       bool
+	}{
+		{"src/**", "src/a/b.ts", true},
+		{"src/**", "src", true},
+		{"src/**", "srcs/a.ts", false},
+		{"src/**/*.ts", "src/a.ts", true},
+		{"src/**/*.ts", "src/a/b/c.ts", true},
+		{"src/**/*.ts", "src/a/b/c.go", false},
+		{"**/*.proto", "a.proto", true},
+		{"**/*.proto", "api/v1/a.proto", true},
+		{"**/internal/**", "pkg/cart/internal/x.go", true},
+		{"**/internal/**", "pkg/cart/x.go", false},
+		{"src/*.ts", "src/a/b.ts", false},
+		{"*.md", "README.md", true},
+		{"*.md", "docs/README.md", false},
+	} {
+		if got := MatchGlob(tc.glob, tc.path); got != tc.want {
+			t.Errorf("MatchGlob(%q, %q) = %v, want %v", tc.glob, tc.path, got, tc.want)
+		}
+	}
+}
+
+// A skeleton is known by its mark on a line of its own. A document that
+// speaks of the mark in a sentence, as the design of a harness does, is not
+// one, and neither is a document without it.
+func TestASkeletonIsKnownByItsMarkOnALineOfItsOwn(t *testing.T) {
+	cases := []struct {
+		name, doc string
+		want      bool
+	}{
+		{"a skeleton", "# x\n\n" + SkeletonMark + "\n\nTODO(design): what it is for.\n", true},
+		{"indented, with a carriage return", "# x\r\n  " + SkeletonMark + "\r\n", true},
+		{"spoken of", "A skeleton carries the comment `" + SkeletonMark + "`; a draft does not.\n", false},
+		{"a design", "# x\n\nWritten by someone.\n", false},
+	}
+	for _, c := range cases {
+		if got := IsSkeleton(c.doc); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}

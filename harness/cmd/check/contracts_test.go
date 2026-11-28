@@ -354,3 +354,120 @@ func TestAPlannedEntryBindsNoServerUntilItsDefinitionMerges(t *testing.T) {
 		t.Fatalf("expected both merged names to bind ledger, got %v", res.Failures)
 	}
 }
+
+// Where no entry of the root's map is the contracts repository and the signs
+// of one are there, a serves: key, a servers block in a note or .proto
+// files, the checker says in a line that the contracts rules are off, and
+// still passes. A map that gives the kind, even to a repository only
+// planned, a repository with none of the signs, and one under no root are
+// told nothing.
+func TestTheContractsRulesSayWhenTheyAreOff(t *testing.T) {
+	otherKind := []design.RepoEntry{{Path: "protos", Kind: "definitions"}, {Path: "billing", Kind: "service"}}
+	under := func(repos []design.RepoEntry, path string) *design.Parent {
+		return &design.Parent{Root: t.TempDir(), Name: "project", Path: path, Design: design.Design{Repos: repos}}
+	}
+	nested := func(files map[string]string, serves []design.Served) *design.Repo {
+		root := t.TempDir()
+		writeFiles(t, root, files)
+		var names []string
+		for f := range files {
+			if !strings.HasPrefix(f, "design/") {
+				names = append(names, f)
+			}
+		}
+		return &design.Repo{Root: root, Name: "billing", Files: names, Design: design.Design{Files: []string{"**"}, Serves: serves}}
+	}
+	served := []design.Served{{Name: "billing.v1.BillingService.Settle", Test: "TestSettle"}}
+	block := map[string]string{"design/changes/2026-10-22-currency.md": "# currency\n\n```servers\n[]\n```\n"}
+	protos := map[string]string{"billing/v1/billing.proto": billingV1, "gen/billing.proto": billingV1}
+
+	cases := []struct {
+		name   string
+		repo   *design.Repo
+		parent *design.Parent
+		says   []string // nil when nothing is said
+	}{
+		{"a design with serves:", nested(nil, served), under(otherKind, "billing"), []string{"this design has serves:", "the map of project"}},
+		{"a note with a servers block", nested(block, nil), under(otherKind, "protos"), []string{"a note in this repository carries a servers block (design/changes/2026-10-22-currency.md)"}},
+		{"definitions", nested(protos, nil), under(otherKind, "protos"), []string{"this repository holds .proto files"}},
+		{"every sign at once", nested(protos, served), under(otherKind, "protos"), []string{"this design has serves:; this repository holds .proto files"}},
+		{"only generated definitions", nested(map[string]string{"gen/billing.proto": billingV1}, nil), under(otherKind, "billing"), nil},
+		{"no sign", nested(map[string]string{"main.go": "package main\n"}, nil), under(otherKind, "billing"), nil},
+		{"the map gives the kind", nested(nil, served), under(theMap, "billing"), nil},
+		{"the map gives the kind to one only planned", nested(nil, served), under([]design.RepoEntry{{Path: "contracts", Kind: "contracts", Status: "planned"}, {Path: "billing"}}, "billing"), nil},
+		{"under no root", nested(protos, served), nil, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := contractsOff(c.repo, c.parent, LocateEnv(c.parent))
+			if c.says == nil {
+				if got != "" {
+					t.Fatalf("nothing was to be said, got: %s", got)
+				}
+				return
+			}
+			for _, want := range append(c.says, "the contracts rules are off", "`kind: contracts`") {
+				if !strings.Contains(got, want) {
+					t.Errorf("expected %q in: %s", want, got)
+				}
+			}
+		})
+	}
+
+	// At the root, the signs are looked for in each repository on its map,
+	// and the line is printed with a run that passes.
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"protos/billing/v1/billing.proto": billingV1,
+		"billing/design/DESIGN.md":        "---\nfiles: [main.go]\nserves:\n  - name: billing.v1.BillingService.Settle\n    test: TestSettle\n---\n\n# billing\n",
+		"billing/main.go":                 "package main\n",
+	})
+	atRoot := &design.Repo{Root: root, Name: "project", Design: design.Design{Repos: otherKind}}
+	res := runChecks(atRoot)
+	var out strings.Builder
+	res.report(&out, atRoot)
+	for _, want := range []string{"harness: the contracts rules are off: protos holds .proto files; billing's design has serves:, and design/DESIGN.md repos: gives no repository `kind: contracts`", "harness: OK"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("at the root, expected %q in:\n%s", want, out.String())
+		}
+	}
+	if res.failed() {
+		t.Errorf("the line is not a refusal, yet the run failed: %v", res.Failures)
+	}
+	atRoot.Design.Repos = theMap
+	if res := runChecks(atRoot); len(res.Notices) != 0 {
+		t.Errorf("a root whose map gives the kind was told the rules are off: %v", res.Notices)
+	}
+}
+
+// A test that serves: names must exist whatever the root's map says: in a
+// repository with no role, under a root with no contracts repository or
+// under no root at all, a missing one is refused and one that is there
+// passes.
+func TestATestServesNamesExistsWhateverTheMapSays(t *testing.T) {
+	served := []design.Served{{Name: "billing.v1.BillingService.Settle", Test: "TestSettleIsIdempotent"}}
+	server := func(test string) *design.Repo {
+		root := t.TempDir()
+		writeFiles(t, root, map[string]string{"internal/settle_test.go": test})
+		return &design.Repo{Root: root, Name: "billing", Files: []string{"internal/settle_test.go"},
+			Design: design.Design{Files: []string{"internal/**"}, Serves: served}}
+	}
+	noContracts := &design.Parent{Root: t.TempDir(), Name: "project", Path: "billing",
+		Design: design.Design{Repos: []design.RepoEntry{{Path: "protos", Kind: "definitions"}, {Path: "billing", Kind: "service"}}}}
+	for _, parent := range []*design.Parent{nil, noContracts} {
+		env := LocateEnv(parent)
+		if env.Role != "" {
+			t.Fatalf("the fixture has a role: %+v", env)
+		}
+		res := &Result{}
+		checkContracts(server("package internal\n"), env, res)
+		if len(res.Failures) != 1 || !strings.Contains(res.Failures[0], "TestSettleIsIdempotent, which is in no test file") {
+			t.Errorf("expected the missing test to be refused, got %v", res.Failures)
+		}
+		res = &Result{}
+		checkContracts(server("package internal\nfunc TestSettleIsIdempotent(t *testing.T) {}\n"), env, res)
+		if res.failed() {
+			t.Errorf("expected a test that exists to pass, got %v", res.Failures)
+		}
+	}
+}

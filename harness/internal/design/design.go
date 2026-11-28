@@ -37,6 +37,10 @@ type Design struct {
 	// Commits is the convention a commit's subject follows here; the only
 	// one is "conventional". Empty binds nothing.
 	Commits string `yaml:"commits"`
+	// Branches is a regular expression the whole of a change branch's name
+	// must match for safe-push to push it. Empty is feat/<what> or
+	// fix/<what>.
+	Branches string `yaml:"branches"`
 	// Protection asks for the server's protection of the default branch to
 	// be read before every push; the only value is "required". Empty reads
 	// nothing.
@@ -54,6 +58,47 @@ type Design struct {
 	// design/spines/<name>.md, so that whoever changes one area reads this
 	// document and that one, and none of the others.
 	Spines []Area `yaml:"spines"`
+	// Rules are the checks a person has given an invariant or a decision of
+	// this document, by its id: what the checker runs to hold the code to it.
+	Rules []Rule `yaml:"rules"`
+	// Size is the number of lines above which the checker says a document,
+	// this one or a spine, has outgrown what is read before a change. Zero is
+	// DefaultSize.
+	Size int `yaml:"size"`
+	// Replaces are the documents this design took its rules from. Each is to
+	// be retired once the design holds what it said; the checker names every
+	// one still there.
+	Replaces []string `yaml:"replaces"`
+}
+
+// DefaultSize is the number of lines a document may reach before the checker
+// says so, where the design sets no size: of its own.
+const DefaultSize = 600
+
+// Rule is one check of a rule the document states: the id of the invariant or
+// decision it holds the code to, where it looks, and exactly one of a pattern
+// no line may match, a pattern every file must hold, paths no file may be
+// at, or a command.
+type Rule struct {
+	// ID is the invariant or decision checked, as this document defines it.
+	ID string `yaml:"id"`
+	// Files are the globs read; none is everything the document accounts
+	// for. Except are globs left out of them.
+	Files  []string `yaml:"files"`
+	Except []string `yaml:"except"`
+	// Forbid is a regular expression: a line that matches it is a breach.
+	Forbid string `yaml:"forbid"`
+	// Require is a regular expression: a file with no line that matches it
+	// is a breach.
+	Require string `yaml:"require"`
+	// Absent are globs no file may be under: a file that is, is a breach.
+	Absent []string `yaml:"absent"`
+	// Run is a command, run from the repository's root: each line it prints
+	// is a breach.
+	Run string `yaml:"run"`
+	// From is the day the rule starts to refuse. Before it, what the rule
+	// finds is reported and nothing is refused. Empty refuses now.
+	From string `yaml:"from"`
 }
 
 // Area is one part of the code the design sets apart, by name and by the
@@ -78,8 +123,12 @@ type Spine struct {
 	Files []string // the area's globs, as the design gives them
 	// Tests are names that must appear in a test file under Files.
 	Tests []string
-	Body  string // the document after its frontmatter
-	Doc   string // the whole document, as a session is handed it
+	// Rules are the checks of the spine's own rules, read within the area.
+	Rules []Rule
+	// Replaces are the documents the spine took its rules from.
+	Replaces []string
+	Body     string // the document after its frontmatter
+	Doc      string // the whole document, as a session is handed it
 	// Err is why the document could not be read; nil when it was.
 	Err error
 }
@@ -87,6 +136,9 @@ type Spine struct {
 // spineHead is the frontmatter of a spine.
 type spineHead struct {
 	Tests []string `yaml:"tests"`
+	Rules []Rule   `yaml:"rules"`
+	// Replaces are the documents this spine took its rules from.
+	Replaces []string `yaml:"replaces"`
 }
 
 // loadSpines reads the spine of every area the design defines, and records
@@ -106,7 +158,7 @@ func (r *Repo) loadSpines() {
 			if err := yaml.Unmarshal([]byte(fm.YAML), &h); err != nil {
 				sp.Err = fmt.Errorf("frontmatter: %w", err)
 			}
-			sp.Tests, sp.Body, sp.Doc = h.Tests, fm.Body, string(b)
+			sp.Tests, sp.Rules, sp.Replaces, sp.Body, sp.Doc = h.Tests, h.Rules, h.Replaces, fm.Body, string(b)
 		}
 		r.Spines = append(r.Spines, sp)
 	}
@@ -151,8 +203,9 @@ type Served struct {
 type RepoEntry struct {
 	// Path is where it is checked out, relative to the root.
 	Path string `yaml:"path"`
-	// Kind says what it is, in the root's own words: service, contracts,
-	// platform. Nothing in the harness gives a kind meaning yet.
+	// Kind says what it is, in the root's own words: service, platform. The
+	// harness gives meaning to one, contracts: the repository that holds the
+	// definitions the others talk through.
 	Kind string `yaml:"kind"`
 	// Remote is where it is cloned from. Empty means it is local only.
 	Remote string `yaml:"remote"`
@@ -512,6 +565,22 @@ const Unfinished = "TODO(design)"
 
 var inlineCode = regexp.MustCompile("`[^`\\n]*`")
 
+// SkeletonMark is the line a skeleton carries and a design does not: the
+// document is still as the harness wrote it, every section a question.
+const SkeletonMark = "<!-- design:skeleton -->"
+
+// IsSkeleton reports whether a document, a design or a spine, is still a
+// skeleton: it carries the mark on a line of its own. The mark spoken of in
+// a sentence, as a design of the harness itself speaks of it, is not one.
+func IsSkeleton(doc string) bool {
+	for _, line := range strings.Split(doc, "\n") {
+		if strings.TrimSpace(line) == SkeletonMark {
+			return true
+		}
+	}
+	return false
+}
+
 // Marks counts the marks left for a person in a document: in its body, not
 // its frontmatter, and not a mark written as code, between backticks, which
 // is the mark being spoken of and not one left. Every command counts with
@@ -590,15 +659,39 @@ func Claimed(globs []string, f string) bool {
 	return false
 }
 
-// MatchGlob supports a trailing /** for "everything under this directory" and
-// otherwise path.Match semantics, in which * does not cross a /.
+// MatchGlob matches a path against a glob, segment by segment: within a
+// segment path.Match semantics, in which * does not cross a /, and a segment
+// that is ** stands for any number of directories, none included. A trailing
+// /** is everything under the directory, and the directory itself.
 func MatchGlob(g, f string) bool {
-	if strings.HasSuffix(g, "/**") {
-		dir := strings.TrimSuffix(g, "/**")
-		return f == dir || strings.HasPrefix(f, dir+"/")
+	if strings.HasSuffix(g, "/**") && f == strings.TrimSuffix(g, "/**") {
+		return true
 	}
-	ok, _ := filepath.Match(filepath.FromSlash(g), filepath.FromSlash(f))
-	return ok
+	return matchSegments(strings.Split(g, "/"), strings.Split(f, "/"))
+}
+
+func matchSegments(g, f []string) bool {
+	for len(g) > 0 {
+		if g[0] == "**" {
+			if len(g) == 1 {
+				return len(f) > 0
+			}
+			for i := 0; i <= len(f); i++ {
+				if matchSegments(g[1:], f[i:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if len(f) == 0 {
+			return false
+		}
+		if ok, _ := filepath.Match(g[0], f[0]); !ok {
+			return false
+		}
+		g, f = g[1:], f[1:]
+	}
+	return len(f) == 0
 }
 
 // IsTestFile recognises the test-file conventions of Go, Python, Rust's

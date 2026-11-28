@@ -5,7 +5,7 @@
 #
 #   ./bootstrap /path/to/project            adopt the method there
 #   ./bootstrap --update /path/to/project   replace its harness with this one,
-#                                           and the method's rules in CLAUDE.md
+#                                           and the method's rules where they are
 #
 #   --standalone  give the project a harness of its own even under a root
 #   --no-hooks    do not install the git hooks
@@ -23,7 +23,8 @@
 # Otherwise it copies harness/ into the project and then adds only what is missing: a
 # design/DESIGN.md whose frontmatter accounts for every file as it stands and whose
 # every section is still a question, the first note under design/changes/,
-# the method's rules in CLAUDE.md, the CI workflow, and the git hooks. It
+# the method's rules in CLAUDE.md, or in AGENTS.md where CLAUDE.md only points
+# at it, the CI workflow, and the git hooks. It
 # overwrites nothing that exists and commits nothing: what it did is yours to
 # read with git status. When it is done the checker passes, and the next step
 # is the design itself:
@@ -51,6 +52,12 @@ done
 
 die() { printf '\nbootstrap: %s\n' "$*" >&2; exit 1; }
 did() { printf '  %-9s %s\n' "$1" "$2"; }
+# The Go tests under a directory, by name, sorted.
+tests_in() {
+  find "$1" -name '*_test.go' -exec sed -n 's/^func \(Test[A-Za-z0-9_]*\)(.*/\1/p' {} + | sort -u
+}
+# Tests the design names that an update took away with the harness that held them.
+GONE=""
 
 [ -n "$TARGET" ] || die "name the project: ./bootstrap /path/to/project"
 [ -d "$TARGET" ] || die "$TARGET is not a directory"
@@ -104,9 +111,22 @@ else
   PARENT=""
   CLAUDE_TEMPLATE="CLAUDE.md"
   if [ -e "$T/harness" ]; then
-    [ -f "$T/harness/FRAMEWORK.md" ] || \
-      die "$T/harness exists and is not this harness. The harness lives in harness/ at the root; move what is there first."
+    # IS WHAT IS THERE THIS HARNESS? One that carries FRAMEWORK.md is. So is
+    # an earlier form of it, from before it carried the method written out:
+    # a Go module with the checker and the push script. That is the likeliest
+    # thing for --update to find, and --update replaces it. Anything else is
+    # the project's own directory, and nothing is written.
+    if [ ! -f "$T/harness/FRAMEWORK.md" ]; then
+      { [ -d "$T/harness/cmd/check" ] && [ -f "$T/harness/go.mod" ] && [ -f "$T/harness/safe-push" ]; } || \
+        die "$T/harness exists and is not this harness. The harness lives in harness/ at the root; move what is there first."
+      [ "$UPDATE" -eq 1 ] || \
+        die "$T/harness is an earlier form of this harness. Replace it with this one:  $0 --update $T"
+    fi
     if [ "$UPDATE" -eq 1 ]; then
+      # The tests the harness had, by name: a design names tests, and one it
+      # names from the harness may have another name in this one, or none.
+      HAD="$(mktemp)"; HAS="$(mktemp)"
+      tests_in "$T/harness" > "$HAD"
       # The settings are the project's own: its model.
       KEEP="$(mktemp -d)"
       for f in coldread/coldread.yaml reverse/reverse.yaml; do
@@ -129,6 +149,13 @@ else
       cp -R "$KEEP/." "$T/harness/"
       rm -rf "$KEEP"
       did replaced "harness/ (its settings kept)"
+      tests_in "$T/harness" > "$HAS"
+      if [ -f "$T/design/DESIGN.md" ]; then
+        for name in $(comm -23 "$HAD" "$HAS"); do
+          ! grep -qw "$name" "$T/design/DESIGN.md" || GONE="$GONE $name"
+        done
+      fi
+      rm -f "$HAD" "$HAS"
     else
       did kept "harness/ (--update replaces it with this one)"
     fi
@@ -154,38 +181,56 @@ fill() {
 }
 
 # --------------------------------------------------------------------------
-# How an agent works here. A CLAUDE.md that exists keeps every line it has;
-# the method's rules are added after them, once.
-if [ ! -f "$T/CLAUDE.md" ]; then
-  fill "$H/templates/$CLAUDE_TEMPLATE" > "$T/CLAUDE.md"
-  did wrote "CLAUDE.md"
-elif grep -q 'design-harness:begin' "$T/CLAUDE.md"; then
+# What the harness can say of the project before anything is written into it:
+# which file holds its standing instructions, and for a nested project where
+# the contracts repository is. One key=value a line; this script parses
+# nothing itself. A harness kept from before it could answer says nothing,
+# and what follows then does as it did: the rules in CLAUDE.md, the
+# template's runner.
+WHERE="$(go -C "$H" run ./cmd/reverse where -root "$T" 2>/dev/null || true)"
+where() { printf '%s\n' "$WHERE" | sed -n "s/^$1=//p"; }
+
+# --------------------------------------------------------------------------
+# How an agent works here. THE RULES GO WHERE THE PROJECT'S INSTRUCTIONS LIVE.
+# That is CLAUDE.md, unless CLAUDE.md is a link to AGENTS.md or holds nothing
+# but an import of it: rules added to a file that only points elsewhere are
+# read by one agent and missed by every other. The file that exists keeps
+# every line it has; the method's rules are added after them, once.
+RULES="$(where rules)"
+[ -n "$RULES" ] || RULES="CLAUDE.md"
+BECAUSE="$(where rules_because)"
+[ -z "$BECAUSE" ] || BECAUSE=" ($BECAUSE)"
+if [ ! -f "$T/$RULES" ]; then
+  fill "$H/templates/$CLAUDE_TEMPLATE" > "$T/$RULES"
+  did wrote "$RULES$BECAUSE"
+elif grep -q 'design-harness:begin' "$T/$RULES"; then
   # THE METHOD'S RULES ARE THE HARNESS'S, AND GO WHERE IT GOES. They were
   # written from a template, between two marks; an update that replaced the
   # harness and left them would leave a project following last year's rules.
   # So --update rewrites what lies between the marks, and nothing outside
-  # them: every other line of the file is the project's.
-  if [ "$UPDATE" -eq 1 ] && grep -q 'design-harness:end' "$T/CLAUDE.md"; then
+  # them: every other line of the file is the project's. The file is written
+  # in place, so that one reached through a link stays a link.
+  if [ "$UPDATE" -eq 1 ] && grep -q 'design-harness:end' "$T/$RULES"; then
     BLOCK="$(mktemp)"
+    NEW="$(mktemp)"
     fill "$H/templates/$CLAUDE_TEMPLATE" | awk '/design-harness:begin/{p=1} p{print} /design-harness:end/{p=0}' > "$BLOCK"
     awk -v block="$BLOCK" '
       /design-harness:begin/ { while ((getline line < block) > 0) print line; skip = 1; next }
       /design-harness:end/   { skip = 0; next }
-      !skip                  { print }' "$T/CLAUDE.md" > "$T/CLAUDE.md.new"
-    if cmp -s "$T/CLAUDE.md" "$T/CLAUDE.md.new"; then
-      rm -f "$T/CLAUDE.md.new"
-      did kept "CLAUDE.md (the method's rules are current)"
+      !skip                  { print }' "$T/$RULES" > "$NEW"
+    if cmp -s "$T/$RULES" "$NEW"; then
+      did kept "$RULES (the method's rules are current)"
     else
-      mv "$T/CLAUDE.md.new" "$T/CLAUDE.md"
-      did replaced "the method's rules in CLAUDE.md, between their marks; every other line kept"
+      cat "$NEW" > "$T/$RULES"
+      did replaced "the method's rules in $RULES, between their marks; every other line kept"
     fi
-    rm -f "$BLOCK"
+    rm -f "$BLOCK" "$NEW"
   else
-    did kept "CLAUDE.md"
+    did kept "$RULES"
   fi
 else
-  { printf '\n## The design, and how a change lands\n\n'; fill "$H/templates/$CLAUDE_TEMPLATE" | sed '1,2d'; } >> "$T/CLAUDE.md"
-  did added "the method's rules, at the end of CLAUDE.md"
+  { printf '\n## The design, and how a change lands\n\n'; fill "$H/templates/$CLAUDE_TEMPLATE" | sed '1,2d'; } >> "$T/$RULES"
+  did added "the method's rules, at the end of $RULES$BECAUSE"
 fi
 
 # --------------------------------------------------------------------------
@@ -199,9 +244,8 @@ if [ "$CI" -eq 1 ]; then
     if [ -n "$ROOT" ]; then
       # Where the root's map lists a contracts repository, the checker reads
       # there what this one must serve, so CI checks it out too.
-      WHERE="$(go -C "$H" run ./cmd/reverse where -root "$T" 2>/dev/null || true)"
-      CPATH="$(printf '%s\n' "$WHERE" | sed -n 's/^contracts_path=//p')"
-      CREPO="$(printf '%s\n' "$WHERE" | sed -n 's/^contracts_remote=//p' | sed -n -e 's#\.git$##' -e 's#^.*github\.com[:/]##p')"
+      CPATH="$(where contracts_path)"
+      CREPO="$(where contracts_remote | sed -n -e 's#\.git$##' -e 's#^.*github\.com[:/]##p')"
       STEP="$(mktemp)"
       if [ -n "$CPATH" ] && [ -n "$CREPO" ]; then
         printf '\n      - name: the contracts repository, beside this one\n        uses: actions/checkout@v4\n        with:\n          repository: %s\n          path: %s\n' "$CREPO" "$CPATH" > "$STEP"
@@ -216,6 +260,21 @@ if [ "$CI" -eq 1 ]; then
     fi
     did wrote ".github/workflows/harness.yml"
     [ -z "${CI_NOTE:-}" ] || did note "$CI_NOTE"
+    # THE WORKFLOW RUNS WHERE THE PROJECT'S WORKFLOWS RUN. The template names
+    # GitHub's own runner. Where every job the project already has names one
+    # other runner, that is written; where they differ, or one is not a plain
+    # label, the template's stays and is said to be a line to check.
+    RUNS_ON="$(where runs_on)"
+    RUNS_CHECK="$(where runs_on_check)"
+    if [ -n "$RUNS_ON" ] && [ "$RUNS_ON" != "ubuntu-latest" ]; then
+      FITTED="$(mktemp)"
+      sed "s|runs-on: ubuntu-latest|runs-on: $RUNS_ON|" "$T/.github/workflows/harness.yml" > "$FITTED"
+      cat "$FITTED" > "$T/.github/workflows/harness.yml"
+      rm -f "$FITTED"
+      did note "runs-on: $RUNS_ON in that workflow, as every other workflow here has it"
+    elif [ -n "$RUNS_CHECK" ]; then
+      did note "runs-on: ubuntu-latest in that workflow is a line to check: $RUNS_CHECK, and bootstrap cannot tell which the harness job should use"
+    fi
   fi
 fi
 
@@ -249,6 +308,11 @@ go -C "$H" run ./cmd/check -root "$T" -validate=false || {
   echo
   echo "bootstrap: the checker does not pass yet. Each FAIL above is a file the design"
   echo "           does not account for, or a note without its parts: amend design/DESIGN.md."
+  [ "$UPDATE" -eq 0 ] || {
+    echo "           After an update, a FAIL that names a test is usually one the design cites"
+    echo "           from the harness it had, which this harness holds under another name or"
+    echo "           not at all."
+  }
 }
 [ ! -f "$T/go.work" ] || {
   echo
@@ -271,6 +335,51 @@ if [ -n "$ROOT" ]; then
   echo "     (kind is the root's own word for it: service, contracts, platform.)"
   echo
   echo "  2. Keep its files out of the root's history: add  /$SUB/  to .gitignore."
+fi
+
+# --------------------------------------------------------------------------
+# WHAT IS LEFT TO DO DEPENDS ON WHAT WAS DONE. A project that was updated has
+# a design; telling it to draft one is advice for somebody else.
+if [ "$UPDATE" -eq 1 ]; then
+  cat <<EOF
+
+bootstrap: done. Nothing is committed; read what changed with:  git -C $T status
+
+An update leaves three things to do, in $T:
+
+  1. Read the diff. A change this project made to its own copy of the
+     harness, or to the method's rules between their marks, is gone from the
+     working tree and shows there; put back what is still wanted.
+
+         git diff
+
+  2. Run the checker, and mend what it refuses:
+
+         go -C $HREL run ./cmd/check
+
+     A FAIL that names a test is usually one the design cites from the
+     harness it had, which this harness holds under another name or not at
+     all. Take it out of tests: in design/DESIGN.md, or name the test that
+     took its place.
+EOF
+  if [ -n "$GONE" ]; then
+    echo
+    echo "     The harness that was here held these, the design names them, and"
+    echo "     this harness does not hold them:"
+    echo
+    for name in $GONE; do echo "         $name"; done
+  fi
+  cat <<EOF
+
+  3. Commit on a branch and push through the one door:
+
+         git checkout -b fix/update-the-harness
+         git add -A && git commit -m "chore(harness): the harness is updated"
+         $HREL/safe-push
+
+The method itself is in $HREL/FRAMEWORK.md.
+EOF
+  exit 0
 fi
 
 cat <<EOF

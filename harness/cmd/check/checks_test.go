@@ -161,3 +161,45 @@ func TestACitationOfTheRootLandsInTheRootsDesign(t *testing.T) {
 		t.Fatalf("a repository under no root had a qualified citation looked up: %v", res.Failures)
 	}
 }
+
+// A citation of another repository's decision written without the slash,
+// `billing ADR-0045`, is read as this design's own and refused, as it was;
+// the refusal now says the form a citation of another repository's takes,
+// and where the word before the id is a repository on the map or the root's
+// name, through backticks or a possessive, it names the citation expected.
+// An id of this design's own that follows such a name is not touched.
+func TestACitationWithoutTheSlashIsToldTheFormToUse(t *testing.T) {
+	parent := &design.Parent{Name: "project", Body: "- **INV-019** — a thing.\n",
+		Design: design.Design{Repos: []design.RepoEntry{{Path: "services/billing", Kind: "service"}, {Path: "ledger", Kind: "service"}}}}
+	body := "### ADR-0001 — this service is Go\n\n- **INV-001** — a thing.\n\n" +
+		"It follows billing ADR-0045 and `project` INV-019, and the ledger's ADR-0007.\n" +
+		"Unlike ledger ADR-0001, which is this design's own, and somebody's ADR-0099.\n" +
+		"ADR-0045 again, bare, and billing ADR-0045 again.\n"
+	res := &Result{}
+	checkIDs(&design.Repo{Name: "orders", Body: body}, parent, res)
+	got := strings.Join(res.Failures, "\n")
+	for _, want := range []string{
+		`cites ADR-0045 (first at body line 5), which it does not define; it is written after "billing": if it is billing's, cite it as billing/ADR-0045`,
+		`cites INV-019 (first at body line 5), which it does not define; it is written after "project": if it is project's, cite it as project/INV-019`,
+		`cites ADR-0007 (first at body line 5), which it does not define; it is written after "ledger": if it is ledger's, cite it as ledger/ADR-0007`,
+		`cites ADR-0099 (first at body line 6), which it does not define; if it is another repository's, cite it as name/ADR-0099`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected %q, got:\n%s", want, got)
+		}
+	}
+	if len(res.Failures) != 4 {
+		t.Errorf("expected four refusals, one an id, got %d:\n%s", len(res.Failures), got)
+	}
+
+	// At a root, the names are those of its own map; the design's own name
+	// before an id it lacks is no hint, since the slash would not help.
+	root := &design.Repo{Name: "project", Body: "### ADR-0001 — one\n\nSee billing ADR-0045, and project ADR-0002.\n",
+		Design: design.Design{Repos: []design.RepoEntry{{Path: "billing"}}}}
+	res = &Result{}
+	checkIDs(root, nil, res)
+	got = strings.Join(res.Failures, "\n")
+	if len(res.Failures) != 2 || !strings.Contains(got, "cite it as billing/ADR-0045") || !strings.Contains(got, "cite it as name/ADR-0002") {
+		t.Errorf("at a root, got:\n%s", got)
+	}
+}

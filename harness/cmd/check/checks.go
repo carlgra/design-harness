@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"harness/internal/design"
 )
@@ -19,10 +24,25 @@ const Unfinished = design.Unfinished
 // Result is what a run found.
 type Result struct {
 	Failures []string
+	// Notices are things a person should know that refuse nothing: each is
+	// printed with the summary, whatever the outcome.
+	Notices  []string
 	Claimed  int
 	InSpines int // of Claimed, those an area holds
 	Orphans  []string
 	Notes    int
+	// Warnings are what the run says and does not refuse: a rule's breach
+	// before its day, a document over its size, a replaced document still
+	// there.
+	Warnings []string
+	Rules    []RuleLine
+	Sizes    []Size
+	Limit    int
+	Replaced []string
+}
+
+func (r *Result) warn(format string, args ...any) {
+	r.Warnings = append(r.Warnings, fmt.Sprintf(format, args...))
 }
 
 func (r *Result) fail(format string, args ...any) {
@@ -35,6 +55,9 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 	for _, f := range r.Failures {
 		fmt.Fprintf(w, "FAIL  %s\n", f)
 	}
+	for _, f := range r.Warnings {
+		fmt.Fprintf(w, "WARN  %s\n", f)
+	}
 	tests := len(repo.Design.Tests)
 	for _, sp := range repo.Spines {
 		tests += len(sp.Tests)
@@ -44,6 +67,8 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 	if len(repo.Spines) > 0 {
 		fmt.Fprintf(w, "harness: %d spine(s), holding %d of those files; the rest are the design's own\n", len(repo.Spines), r.InSpines)
 	}
+	r.reportRules(w)
+	r.reportSizes(w)
 	if n := unfinished(repo.Body); n > 0 {
 		fmt.Fprintf(w, "harness: %s still says %s in %d place(s): the design is not finished until a person has answered each\n", design.DocPath, Unfinished, n)
 	}
@@ -51,6 +76,9 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 		if n := unfinished(sp.Body); n > 0 {
 			fmt.Fprintf(w, "harness: %s still says %s in %d place(s)\n", sp.Path, Unfinished, n)
 		}
+	}
+	for _, n := range r.Notices {
+		fmt.Fprintf(w, "harness: %s\n", n)
 	}
 	if r.failed() {
 		fmt.Fprintln(w, "harness: FAILED. Two fixes: amend the design, or change the code.")
@@ -62,7 +90,11 @@ func (r *Result) report(w io.Writer, repo *design.Repo) {
 // unfinished counts the marks left for a person to answer.
 func unfinished(body string) int { return design.Marks(body) }
 
-func runChecks(repo *design.Repo) *Result {
+func runChecks(repo *design.Repo) *Result { return runChecksOn(repo, time.Now()) }
+
+// runChecksOn runs the checks as of a day: a rule with a day to refuse from
+// warns before it.
+func runChecksOn(repo *design.Repo, today time.Time) *Result {
 	res := &Result{}
 	parent, err := design.FindParent(repo.Root)
 	if err != nil {
@@ -73,7 +105,14 @@ func runChecks(repo *design.Repo) *Result {
 	checkTests(repo, res)
 	checkMap(repo, res)
 	checkIDs(repo, parent, res)
-	checkContracts(repo, LocateEnv(parent), res)
+	env := LocateEnv(parent)
+	checkContracts(repo, env, res)
+	if n := contractsOff(repo, parent, env); n != "" {
+		res.Notices = append(res.Notices, n)
+	}
+	checkRules(repo, today, res)
+	checkSizes(repo, res)
+	checkReplaced(repo, res)
 	if notes, err := readNotes(repo.Root); err != nil {
 		res.fail("%s: %v", ChangesDir, err)
 	} else {
@@ -186,12 +225,15 @@ func checkNamed(repo *design.Repo, doc string, names []string, mine func(string)
 		res.fail("%s names %d test(s) but accounts for no test file", doc, len(names))
 		return
 	}
+	var wanted []string
 	for _, name := range names {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
+		if name = strings.TrimSpace(name); name != "" {
+			wanted = append(wanted, name)
 		}
-		if !definedIn(repo.Root, tests, name) {
+	}
+	found := definedAmong(repo.Root, tests, wanted)
+	for _, name := range wanted {
+		if !found[name] {
 			res.fail("%s names the test %s, which is in no test file it accounts for", doc, name)
 		}
 	}
@@ -200,20 +242,70 @@ func checkNamed(repo *design.Repo, doc string, names []string, mine func(string)
 // definedIn reports whether name appears as a whole word in any of the files:
 // a Go func, a Python def, or a name a runner is given as a string.
 func definedIn(root string, files []string, name string) bool {
-	word, err := regexp.Compile(`(^|\W)` + regexp.QuoteMeta(name) + `($|\W)`)
-	if err != nil {
-		return false
+	return definedAmong(root, files, []string{name})[name]
+}
+
+// definedAmong is which of the names appear as a whole word in any of the
+// files. Each file is read once, whatever the number of names, and the
+// files are read by as many hands as there are processors: a repository may
+// name hundreds of tests and keep thousands of test files.
+func definedAmong(root string, files, names []string) map[string]bool {
+	found := map[string]bool{}
+	if len(names) == 0 {
+		return found
+	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	next := make(chan string)
+	for w := 0; w < runtime.NumCPU(); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for f := range next {
+				b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+				if err != nil {
+					continue
+				}
+				for _, name := range names {
+					mu.Lock()
+					done := found[name]
+					mu.Unlock()
+					if !done && wholeWord(b, name) {
+						mu.Lock()
+						found[name] = true
+						mu.Unlock()
+					}
+				}
+			}
+		}()
 	}
 	for _, f := range files {
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
-		if err != nil {
-			continue
+		next <- f
+	}
+	close(next)
+	wg.Wait()
+	return found
+}
+
+// wholeWord reports whether name is in b with no letter, digit or underscore
+// against either end of it.
+func wholeWord(b []byte, name string) bool {
+	word := func(c byte) bool {
+		return c == '_' || c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z'
+	}
+	n := []byte(name)
+	for at := 0; ; {
+		i := bytes.Index(b[at:], n)
+		if i < 0 {
+			return false
 		}
-		if word.Match(b) {
+		i += at
+		end := i + len(n)
+		if (i == 0 || !word(b[i-1])) && (end == len(b) || !word(b[end])) {
 			return true
 		}
+		at = i + 1
 	}
-	return false
 }
 
 // --- ids ---
@@ -280,10 +372,26 @@ var qualifier = regexp.MustCompile(`[A-Za-z0-9._-]+$`)
 // other name is another repository's to define and is not looked up. A kind
 // a document defines none of is not checked there: it may cite decisions it
 // has not yet brought in.
+//
+// The slash is the only form. An id written after a name with a space,
+// `billing ADR-0045`, is this document's own like any other bare id, and
+// refused when the document does not define it; the refusal says the form,
+// and names the citation it expects when the word before the id is a name
+// one could be qualified by.
 func checkIDs(repo *design.Repo, parent *design.Parent, res *Result) {
 	named := map[string]map[string]int{}
+	// others are the names a citation could be qualified by: every document
+	// that is looked up, and every repository on the map, the root's or this
+	// one's own.
+	others := map[string]bool{}
 	if parent != nil {
 		named[parent.Name] = definitions(parent.Body)
+		for _, e := range parent.Design.Repos {
+			others[path.Base(strings.Trim(e.Path, "/"))] = true
+		}
+	}
+	for _, e := range repo.Design.Repos {
+		others[path.Base(strings.Trim(e.Path, "/"))] = true
 	}
 	named[repo.Name] = definitions(repo.Body)
 	for _, sp := range repo.Spines {
@@ -291,21 +399,38 @@ func checkIDs(repo *design.Repo, parent *design.Parent, res *Result) {
 			named[sp.Name] = definitions(sp.Body)
 		}
 	}
-	checkDocIDs(design.DocPath, repo.Body, named, res)
+	for name := range named {
+		others[name] = true
+	}
+	checkDocIDs(design.DocPath, repo.Name, repo.Body, named, others, res)
 	for _, sp := range repo.Spines {
 		if sp.Err == nil {
-			checkDocIDs(sp.Path, sp.Body, named, res)
+			checkDocIDs(sp.Path, sp.Name, sp.Body, named, others, res)
 		}
 	}
 }
 
-// checkDocIDs holds one document's ids and citations. named are the
-// documents a citation here can be qualified by, each with what it defines.
-func checkDocIDs(doc, body string, named map[string]map[string]int, res *Result) {
+// wordBefore is the word an id follows, through a space, backticks, emphasis
+// and a possessive: billing in "billing ADR-0045", "`billing` ADR-0045" and
+// "billing's ADR-0045".
+func wordBefore(before string) string {
+	before = strings.TrimRight(before, " \t`*_")
+	before = strings.TrimSuffix(strings.TrimSuffix(before, "'s"), "’s")
+	return qualifier.FindString(strings.TrimRight(before, "`*_"))
+}
+
+// checkDocIDs holds one document's ids and citations. self is the name the
+// document is cited by from elsewhere; named are the documents a citation
+// here can be qualified by, each with what it defines; others are every name
+// a reader might have meant to qualify one by.
+func checkDocIDs(doc, self, body string, named map[string]map[string]int, others map[string]bool, res *Result) {
 	defined := definitions(body)
 	type cite struct {
 		id   string
 		line int
+		// after is the name the id was written after, when it is one a
+		// citation could have been qualified by.
+		after string
 	}
 	var cites []cite
 	seen := map[string]bool{}
@@ -333,7 +458,11 @@ func checkDocIDs(doc, body string, named map[string]map[string]int, res *Result)
 				}
 				continue
 			}
-			cites = append(cites, cite{id, i + 1})
+			c := cite{id: id, line: i + 1}
+			if w := wordBefore(line[:loc[0]]); w != self && others[w] {
+				c.after = w
+			}
+			cites = append(cites, c)
 		}
 	}
 	kinds := map[string]bool{}
@@ -348,11 +477,24 @@ func checkDocIDs(doc, body string, named map[string]map[string]int, res *Result)
 	for _, id := range ids {
 		res.fail("%s defines %s %d times: an id names one thing, for life", doc, id, defined[id])
 	}
+	// One refusal an id, at its first citation; the name it was written
+	// after is taken from the first citation that has one.
+	after := map[string]string{}
+	for _, c := range cites {
+		if c.after != "" && after[c.id] == "" {
+			after[c.id] = c.after
+		}
+	}
 	for _, c := range cites {
 		if defined[c.id] > 0 || !kinds[c.id[:3]] || seen[c.id] {
 			continue
 		}
 		seen[c.id] = true
-		res.fail("%s cites %s (first at body line %d), which it does not define", doc, c.id, c.line)
+		if name := after[c.id]; name != "" {
+			res.fail("%s cites %s (first at body line %d), which it does not define; it is written after %q: if it is %s's, cite it as %s/%s, with the slash",
+				doc, c.id, c.line, name, name, name, c.id)
+			continue
+		}
+		res.fail("%s cites %s (first at body line %d), which it does not define; if it is another repository's, cite it as name/%s", doc, c.id, c.line, c.id)
 	}
 }

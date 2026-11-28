@@ -142,11 +142,15 @@ below.
 bootstrap            adopt the method in a project that already exists
 harness/             everything that is copied into a project
   FRAMEWORK.md       the method, in full: read this first
-  cmd/check          the checker: files accounted for, named tests exist, ids land, notes have their parts;
+  cmd/check          the checker: files accounted for, named tests exist, ids land, notes have their parts,
+                     and every rule with a check is kept, apart from the breaches recorded as known;
                      -for <path> names the documents to read before changing it
+  cmd/backtest       try the design against the history: which past changes a rule would have refused,
+                     and how many stayed inside one area
   cmd/coldread       two sessions with no memory read the design, or one area's spine with it: comprehension, readiness
   cmd/reverse        reverse-engineer the design of existing code, whole or one area at a time: survey, skeleton, draft
   cmd/subject        is a commit's subject a Conventional Commit (optional, per repository)
+  cmd/branch         is a name a change branch's: feat/ or fix/, or the pattern the design gives
   cmd/sync           at a root: clone and fetch the repositories its design lists
   safe-push          the one way a branch is pushed: check, push, open the pull request
   hooks/             pre-push and commit-msg, and their installer
@@ -173,6 +177,12 @@ Bootstrap copies `harness/` into the project and adds only what is missing: a
 section is still a question, the first change note, the method's rules in `CLAUDE.md`
 (after whatever is already there), a CI workflow, and the git hooks. It overwrites nothing
 and commits nothing. When it finishes, the checker passes.
+
+The rules go where the project's instructions for an agent live. Where `CLAUDE.md` is a
+link to `AGENTS.md`, or holds only an `@AGENTS.md` import, they are added to `AGENTS.md`,
+and bootstrap says so. The CI workflow runs on the runner the project's other workflows
+all name; where they name more than one, it is written for `ubuntu-latest` and bootstrap
+says that `runs-on:` is a line to check.
 
 Then, in the project:
 
@@ -262,6 +272,18 @@ go -C harness run ./cmd/coldread -change-file design/changes/<the note>.md -out 
 harness/safe-push                             # check, push, open the pull request; a person merges
 ```
 
+A rule the code is to be held to is stated in the design and given a check. Try it
+against the history, then adopt it with the breaches already there recorded as known:
+
+```
+go -C harness run ./cmd/backtest -forbid 'from "(\.\./)+billing/' -files 'src/**'
+                                              # which of the last 200 changes would this have refused
+go -C harness run ./cmd/check -known INV-002  # adopt it: what is there is listed and allowed, anything new is refused
+```
+
+The list only shrinks. `backtest` with no arguments also says how well the areas under
+`spines:` fit the way the code has changed.
+
 `harness/FRAMEWORK.md` is the whole method: how the document is written, what the machine
 checks and deliberately does not, how a change lands, and why a cold read advises and
 never gates.
@@ -273,16 +295,23 @@ design-harness/bootstrap --update /path/to/your/project
 ```
 
 replaces the project's `harness/` with this one and keeps its settings, and rewrites the
-method's rules in its `CLAUDE.md`, between their two marks, leaving every other line of
-that file alone. In a repository nested under a root it refreshes the rules only; the
+method's rules in its `CLAUDE.md`, or its `AGENTS.md` if that is where they are, between
+their two marks, leaving every other line of that file alone. It replaces an earlier form of this harness the same way, and then
+prints what an update leaves to do: read the diff, run the checker, and expect it to
+name any test the design cites that this harness does not hold. In a repository nested
+under a root it refreshes the rules only; the
 harness is updated at the root. The harness is
 part of the project once copied: change it there if you need to, through the same door as
 everything else.
 
 ## What it does not do
 
-- It does not judge whether a design is good. The checker proves four small things and is
-  always right about them; everything else is read by a person.
+- It does not judge whether a design is good. The checker proves a few small things, and
+  the checks a person gave their own rules, and is always right about them; everything
+  else is read by a person.
+- A rule's check is a pattern, a path or a command. A rule about which module may import
+  which is a pattern only where imports are written as paths; otherwise it needs a
+  command of the project's own.
 - It does not let a model gate a merge, or admit anything. A cold read advises, a
   draft proposes, a person decides.
 - It reads definitions from protobuf only. A contracts repository in another format has
