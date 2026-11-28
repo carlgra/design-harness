@@ -347,3 +347,136 @@ func TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects(t *testing
 		t.Errorf("a second update changed the rules again:\n%s", out)
 	}
 }
+
+// theScript is the real bootstrap, beside harness/ in the method's own
+// repository; a copy of the harness in a project has none, and there a test
+// that runs it has nothing to walk.
+func theScript(t *testing.T) string {
+	t.Helper()
+	script, err := filepath.Abs(filepath.Join("..", "..", "..", "bootstrap"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(script); err != nil {
+		t.Skip("no bootstrap beside this harness: it is a copy in a project")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	return script
+}
+
+// aProject is a git repository holding the files given, with nothing
+// committed.
+func aProject(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	for name, body := range files {
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitIn(t, root, "init", "-q", "-b", "main")
+	return root
+}
+
+func readIn(t *testing.T, root, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// Where CLAUDE.md only points at AGENTS.md, by an import or as a link, the
+// method's rules are added to AGENTS.md, where every agent reads them, and
+// bootstrap says so; CLAUDE.md is left exactly as it was. The draft writes
+// the project's section into the same file, and an update replaces the rules
+// there.
+func TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive(t *testing.T) {
+	script := theScript(t)
+	const (
+		pointer  = "# Agents\n\n@AGENTS.md\n"
+		standing = "# Standing instructions\n\nAlways run make test.\n"
+	)
+	cases := []struct {
+		name string
+		link bool
+		says string
+	}{
+		{"an import", false, "at the end of AGENTS.md (CLAUDE.md only imports it)"},
+		{"a link", true, "at the end of AGENTS.md (CLAUDE.md is a link to it)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := aProject(t, map[string]string{"AGENTS.md": standing, "CLAUDE.md": pointer})
+			claude := filepath.Join(root, "CLAUDE.md")
+			if c.link {
+				if err := os.Remove(claude); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink("AGENTS.md", claude); err != nil {
+					t.Skip("this file system has no links")
+				}
+			}
+			untouched := func(when string) {
+				t.Helper()
+				fi, err := os.Lstat(claude)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if c.link && fi.Mode()&os.ModeSymlink == 0 {
+					t.Fatalf("%s, CLAUDE.md is no longer a link", when)
+				}
+				if !c.link && readIn(t, root, "CLAUDE.md") != pointer {
+					t.Fatalf("%s, CLAUDE.md was written to:\n%s", when, readIn(t, root, "CLAUDE.md"))
+				}
+			}
+
+			out := run(t, "sh", script, "--no-ci", "--no-hooks", root)
+			if !strings.Contains(out, c.says) {
+				t.Errorf("bootstrap did not say which file it chose, %q:\n%s", c.says, out)
+			}
+			untouched("after adopting")
+			agents := readIn(t, root, "AGENTS.md")
+			if !strings.HasPrefix(agents, standing) {
+				t.Errorf("the project's own AGENTS.md was not kept as it was:\n%s", agents)
+			}
+			for _, want := range []string{MethodBegin, "Design before code", ProjectBegin} {
+				if strings.Count(agents, want) != 1 {
+					t.Errorf("AGENTS.md holds %q %d times, want once", want, strings.Count(agents, want))
+				}
+			}
+
+			// The draft's section for the project goes in the same file.
+			file, err := writeProject(root, "- Build with make.")
+			if err != nil || file != "AGENTS.md" {
+				t.Fatalf("the project's section went to %q (%v)", file, err)
+			}
+			untouched("after a draft")
+			agents = readIn(t, root, "AGENTS.md")
+			if !strings.Contains(agents, "- Build with make.") || strings.Count(agents, ProjectBegin) != 1 {
+				t.Errorf("the project's section is not in AGENTS.md once:\n%s", agents)
+			}
+
+			// A year passes; an update finds the rules where they are.
+			stale := strings.Replace(agents, "1. **Design before code.**", "1. **A RULE FROM AN OLD VERSION.**", 1)
+			if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(stale), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out = run(t, "sh", script, "--update", "--no-ci", "--no-hooks", root)
+			if !strings.Contains(out, "replaced  the method's rules in AGENTS.md") {
+				t.Errorf("an update did not say where it replaced the rules:\n%s", out)
+			}
+			untouched("after an update")
+			if got := readIn(t, root, "AGENTS.md"); got != agents {
+				t.Errorf("an update did not bring AGENTS.md back to the current rules and nothing else:\n%s", got)
+			}
+		})
+	}
+}

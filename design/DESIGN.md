@@ -36,6 +36,8 @@ tests:
   - TestARepositoryUnderARootUsesTheRootsHarnessAndRules
   - TestTheMapIsBroughtInLineWithoutMerging
   - TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects
+  - TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive
+  - TestTheRulesFileIsTheOneThatHoldsTheInstructions
   - TestAChangeBranchThatPassesIsPushed
   - TestWorkOnMainOrAStrayBranchIsMovedAndMainIsNeverPushed
   - TestABranchAlreadyMergedIsNotPushedToAgain
@@ -193,20 +195,31 @@ The parts, all under `harness/`:
   frontmatter accounts for every file and whose body is questions. `draft` starts one session
   in the repository with the tools that read, `Read`, `Grep` and `Glob`, and no other,
   hands it `harness/reverse/reverse.md`, the survey and the shape to fill, and writes
-  its reply to `design/DESIGN.md` and to the project's section of `CLAUDE.md`. `prompt`
+  its reply to `design/DESIGN.md` and to the project's section of the rules file. `prompt`
   prints what that session would be handed. A fifth step, `where`, is for scripts: it
-  prints where a repository sits as `key=value` lines: `root=`, the root's name, which is
+  prints what `bootstrap` needs to know of a repository as `key=value` lines. `rules=` is
+  the rules file, and `rules_because=` why, when it is not `CLAUDE.md`. Under a root it
+  prints `root=`, the root's name, which is
   that of its `origin` or, with none, of its directory; `path=`, this repository's path
   from the root with forward slashes, `billing` or `services/billing`; and where the
   root's map lists a contracts repository beside it, `contracts_path=`, its path from
-  the root, and `contracts_remote=`, its remote as the map gives it. Under no root it
-  prints nothing. `bootstrap` reads the last two to write a CI workflow. A skeleton is known by one line it carries,
+  the root, and `contracts_remote=`, its remote as the map gives it. `bootstrap` reads
+  the first for where to write the rules and the last two to write a CI workflow.
+
+  The rules file is the file at a repository's root that holds its standing
+  instructions for an agent. It is `AGENTS.md` where `CLAUDE.md` is a link to it, or
+  holds nothing but an import of it: `@AGENTS.md` or `@./AGENTS.md` on a line of its
+  own, and no other line that is not blank or a heading. A file that already holds the
+  method's rules is the rules file, `CLAUDE.md` before `AGENTS.md`, so that an update
+  finds them where they are. In every other case it is `CLAUDE.md`, one that imports
+  `AGENTS.md` among lines of its own included. `bootstrap` and `draft` both ask
+  `RulesFile`, in `where.go`, and neither decides it again. A skeleton is known by one line it carries,
   the comment `<!-- design:skeleton -->`; a draft does not carry it, so once a draft
   is written the document counts as someone's and a second draft needs `-force`. The
-  project's section of `CLAUDE.md` is what lies between the comments
+  project's section of the rules file is what lies between the comments
   `<!-- design:project:begin -->` and `<!-- design:project:end -->`. The method's
   own rules sit above it between `<!-- design-harness:begin -->` and
-  `:end -->`, come from `templates/CLAUDE.md`, and are never written by a session.
+  `:end -->`, come from `templates/CLAUDE.md` whichever file they are written to, and are never written by a session.
 - `internal/session` is the one place a model is started: the arguments, the settings
   file, the runner the tests replace.
 - `cmd/subject` and `internal/convention` say whether a subject is a Conventional
@@ -427,15 +440,16 @@ root's found on disk is not looked up.
   for a person to correct.
 
 `bootstrap`, at this repository's root, is POSIX shell. Given a project, new or old, it copies
-`harness/` in, then writes `CLAUDE.md` or adds the method's rules to the end of one
-that exists, the CI workflow, then the skeleton and the first note, then installs the
+`harness/` in, then writes the rules file or adds the method's rules to the end of one
+that exists, and says which file that is when it is not `CLAUDE.md`, the CI workflow, then the skeleton and the first note, then installs the
 hooks, and runs the checker. Each of those is skipped when the thing is already there,
 and a `harness/` directory that is not this harness stops it before anything is
 written. `--update` is the one thing that replaces, and it replaces what is the
 harness's: it swaps a project's `harness/` for this one, whole, keeping only the
 project's two settings files, `coldread/coldread.yaml` and `reverse/reverse.yaml`;
-and it rewrites the method's rules in `CLAUDE.md`, the lines between their two marks,
-from the current template, leaving every line outside the marks as it was. In a
+and it rewrites the method's rules in the rules file, the lines between their two marks,
+from the current template, leaving every line outside the marks as it was, and writing
+the file in place so that one reached through a link stays a link. In a
 repository nested under a root there is no harness to swap, so `--update` there
 rewrites the rules alone, from the root's templates. A change a project made to its
 own copy is lost from the working tree by that and shows in `git diff`, where the
@@ -513,7 +527,7 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   other command. *(`test: TestAVerdictIsReadFromTheLastLineAndNothingElseCounts`)*
 - **INV-007** — The session that drafts a design can read and cannot write. Only the
   `reverse` command writes, only `design/DESIGN.md` and the marked section of
-  `CLAUDE.md`, and never over a design that is no longer a skeleton unless forced.
+  the rules file, and never over a design that is no longer a skeleton unless forced.
   *(`test: TestASessionIsStartedWithExactlyTheToolsItIsGiven`, `test:
   TestADraftNeverReplacesADesignSomeoneWrote`, `test:
   TestTheProjectsRulesReplaceOnlyTheirOwnSection`, `test:
@@ -527,15 +541,18 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   which is the root's decision and not the skeleton's (INV-016). *(`test: TestTheSurveySaysWhatIsThereAndDecidesNothing`, `test:
   TestASkeletonsFrontmatterAccountsForEveryFileAndSwitchesNothingOn`)*
 - **INV-009** — Adopting with bootstrap overwrites nothing that exists, adding to the
-  end of a `CLAUDE.md` that is already there and leaving every line of it as it was,
-  and commits nothing; and a project it has run on passes the checker with its own copy of the
+  end of a rules file that is already there and leaving every line of it as it was,
+  and commits nothing; the rules go in the file that holds the repository's standing
+  instructions, and a `CLAUDE.md` that only points at `AGENTS.md` is not written to; and a project it has run on passes the checker with its own copy of the
   harness alone, or, adopted under a root, with the root's and no copy (INV-016); the
   one exception is a repository merged contracts already name as a server, which is
   refused until it names its tests (INV-018). With `--update`, and only then, it replaces what is the harness's:
   `harness/`, less the project's two settings files, and the method's rules between
-  their marks in `CLAUDE.md`; and nothing else.
+  their marks in the rules file; and nothing else.
   *(`test: TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`,
-  `test: TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`)*
+  `test: TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`, `test:
+  TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive`, `test:
+  TestTheRulesFileIsTheOneThatHoldsTheInstructions`)*
 - **INV-010** — A design that still says `TODO(design)` is reported as unfinished on
   every run of the checker, and is not refused for it. *(`test:
   TestAnUnfinishedDesignIsSaidToBeUnfinished`)*
@@ -765,6 +782,14 @@ A copy because the hook that guards every push must work offline, from a fresh c
 at the version the project last reviewed; and because a project should be able to read
 and change what refuses its pushes.
 
+What bootstrap writes around the copy fits the repository it finds. The method's rules
+go in the file that holds the repository's standing instructions: `AGENTS.md` where
+`CLAUDE.md` is a link to it or only imports it, `CLAUDE.md` otherwise. Rules added to a
+file that only points elsewhere are read by the one agent that follows the pointer's
+file and by no other, and those agents are then told nothing of the design, the notes
+or `safe-push`. Bootstrap says which file it chose, because the choice is made from what
+a file contains and a person should see it made.
+
 #### Alternatives rejected
 
 - **A released binary or `go run module@version`.** Every push would depend on a
@@ -776,6 +801,13 @@ and change what refuses its pushes.
   brings an interpreter version and a package environment into every hook. What is
   shell, `bootstrap`, `safe-push`, the two hooks and their installer, parses nothing: each only
   drives git, `gh` and the Go commands.
+- **Always add the rules to `CLAUDE.md`.** Where that file is one line importing
+  `AGENTS.md`, an agent that reads `AGENTS.md` directly never sees them, and through a
+  link the rules land in `AGENTS.md` without anyone having decided it.
+- **Write the rules to both files.** Two copies of one rule, and an agent that reads
+  both through the import is handed them twice.
+- **Move a project's instructions into one file for it.** They are the project's;
+  adopting overwrites nothing (INV-009).
 
 ### ADR-0006 — Nothing reaches main except through a pull request, and there is one door
 
@@ -1044,7 +1076,7 @@ No machine holds a design to it yet.
 
 | File | Purpose |
 |---|---|
-| `bootstrap` | Adopts the method in a project: copies `harness/`, then adds what is missing and overwrites nothing (INV-009). `--update` replaces a project's harness and keeps its settings. |
+| `bootstrap` | Adopts the method in a project: copies `harness/`, then adds what is missing, where the project keeps such things, and overwrites nothing (INV-009). `--update` replaces a project's harness and keeps its settings. |
 | `harness/FRAMEWORK.md` | The method, written for whoever works in a project that uses it. Its presence is how `bootstrap` knows a `harness/` is this one. |
 | `harness/go.mod`, `harness/go.sum` | The harness's own module, `harness`, with one dependency (ADR-0005). |
 | `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files. |
@@ -1052,7 +1084,7 @@ No machine holds a design to it yet.
 | `harness/internal/convention/` | Whether a subject is a Conventional Commit, and whether a repository asks for them (ADR-0007). |
 | `harness/cmd/check/` | The checker (ADR-0002): `checks.go` holds files, tests, ids and the map; `notes.go` the notes; `contracts.go` a repository's role from the root's map, the `servers` block, the scan of `.proto` files and the two rules of ADR-0010; `main.go` runs them and then `validate:`. `checks.go` also holds the areas and their spines (ADR-0013), and `main.go` the `-for` that names the documents to read for a path. |
 | `harness/cmd/coldread/` | The two questions (ADR-0003): composes what a session is handed, reads the verdict line, prints and writes the replies. With `-spine`, what is handed is the design and then one area's spine. |
-| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. |
+| `harness/cmd/reverse/` | Reverse-engineering (ADR-0004): `survey.go` is the survey, the skeleton and the first note, with its empty `servers` block in a contracts repository; `main.go` the five steps, the reply's two parts, and the writes; `where.go` what the `where` step works out for `bootstrap`, the rules file first. `bootstrap_test.go` runs the real `bootstrap`. `spine.go` is the same steps for one area with `-spine`: the survey of the area alone, the skeleton, the prompt and the draft of its spine, and the skeletons a drafted design's areas are given. |
 | `harness/cmd/subject/` | The command the hook and the push script call for ADR-0007. |
 | `harness/cmd/protection/` | Reads the server's protection of the default branch, and on request adds what it lacks (ADR-0011): `protection.go` is what is read, what is lacking and what is sent; `main.go` the frontmatter's `protection:`, the `gh` tool and what is printed. |
 | `harness/cmd/sync/` | Makes the disk match a root's map (ADR-0009). |
@@ -1110,6 +1142,8 @@ Paths a fault would travel, and the test that walks each:
 - a repository that has not asked has nothing read — `TestProtectionIsReadOnlyWhereTheDesignAsks`
 - a push is refused while the server's protection lacks something, where the design asks — `TestAPushIsRefusedWhileTheServersProtectionLacksSomething`
 - an update replaces the harness and the method's rules, and nothing that is the project's — `TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`
+- the method's rules added to a `CLAUDE.md` that only points at `AGENTS.md` are read by one agent and no other — `TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive`
+- a `CLAUDE.md` with rules of its own is taken for a pointer, or a pointer for rules — `TestTheRulesFileIsTheOneThatHoldsTheInstructions`
 - a design divided into areas passes, with each file counted once — `TestADesignDividedIntoAreasPasses`
 - an area with no spine, or a spine with no area, is refused — `TestAnAreaHasASpineAndASpineHasAnArea`
 - a file two areas hold is refused, and so is one nothing holds — `TestAFileIsUnderOneSpine`

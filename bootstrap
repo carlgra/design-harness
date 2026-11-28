@@ -5,7 +5,7 @@
 #
 #   ./bootstrap /path/to/project            adopt the method there
 #   ./bootstrap --update /path/to/project   replace its harness with this one,
-#                                           and the method's rules in CLAUDE.md
+#                                           and the method's rules where they are
 #
 #   --standalone  give the project a harness of its own even under a root
 #   --no-hooks    do not install the git hooks
@@ -23,7 +23,8 @@
 # Otherwise it copies harness/ into the project and then adds only what is missing: a
 # design/DESIGN.md whose frontmatter accounts for every file as it stands and whose
 # every section is still a question, the first note under design/changes/,
-# the method's rules in CLAUDE.md, the CI workflow, and the git hooks. It
+# the method's rules in CLAUDE.md, or in AGENTS.md where CLAUDE.md only points
+# at it, the CI workflow, and the git hooks. It
 # overwrites nothing that exists and commits nothing: what it did is yours to
 # read with git status. When it is done the checker passes, and the next step
 # is the design itself:
@@ -154,38 +155,56 @@ fill() {
 }
 
 # --------------------------------------------------------------------------
-# How an agent works here. A CLAUDE.md that exists keeps every line it has;
-# the method's rules are added after them, once.
-if [ ! -f "$T/CLAUDE.md" ]; then
-  fill "$H/templates/$CLAUDE_TEMPLATE" > "$T/CLAUDE.md"
-  did wrote "CLAUDE.md"
-elif grep -q 'design-harness:begin' "$T/CLAUDE.md"; then
+# What the harness can say of the project before anything is written into it:
+# which file holds its standing instructions, and for a nested project where
+# the contracts repository is. One key=value a line; this script parses
+# nothing itself. A harness kept from before it could answer says nothing,
+# and what follows then does as it did: the rules in CLAUDE.md, the
+# template's runner.
+WHERE="$(go -C "$H" run ./cmd/reverse where -root "$T" 2>/dev/null || true)"
+where() { printf '%s\n' "$WHERE" | sed -n "s/^$1=//p"; }
+
+# --------------------------------------------------------------------------
+# How an agent works here. THE RULES GO WHERE THE PROJECT'S INSTRUCTIONS LIVE.
+# That is CLAUDE.md, unless CLAUDE.md is a link to AGENTS.md or holds nothing
+# but an import of it: rules added to a file that only points elsewhere are
+# read by one agent and missed by every other. The file that exists keeps
+# every line it has; the method's rules are added after them, once.
+RULES="$(where rules)"
+[ -n "$RULES" ] || RULES="CLAUDE.md"
+BECAUSE="$(where rules_because)"
+[ -z "$BECAUSE" ] || BECAUSE=" ($BECAUSE)"
+if [ ! -f "$T/$RULES" ]; then
+  fill "$H/templates/$CLAUDE_TEMPLATE" > "$T/$RULES"
+  did wrote "$RULES$BECAUSE"
+elif grep -q 'design-harness:begin' "$T/$RULES"; then
   # THE METHOD'S RULES ARE THE HARNESS'S, AND GO WHERE IT GOES. They were
   # written from a template, between two marks; an update that replaced the
   # harness and left them would leave a project following last year's rules.
   # So --update rewrites what lies between the marks, and nothing outside
-  # them: every other line of the file is the project's.
-  if [ "$UPDATE" -eq 1 ] && grep -q 'design-harness:end' "$T/CLAUDE.md"; then
+  # them: every other line of the file is the project's. The file is written
+  # in place, so that one reached through a link stays a link.
+  if [ "$UPDATE" -eq 1 ] && grep -q 'design-harness:end' "$T/$RULES"; then
     BLOCK="$(mktemp)"
+    NEW="$(mktemp)"
     fill "$H/templates/$CLAUDE_TEMPLATE" | awk '/design-harness:begin/{p=1} p{print} /design-harness:end/{p=0}' > "$BLOCK"
     awk -v block="$BLOCK" '
       /design-harness:begin/ { while ((getline line < block) > 0) print line; skip = 1; next }
       /design-harness:end/   { skip = 0; next }
-      !skip                  { print }' "$T/CLAUDE.md" > "$T/CLAUDE.md.new"
-    if cmp -s "$T/CLAUDE.md" "$T/CLAUDE.md.new"; then
-      rm -f "$T/CLAUDE.md.new"
-      did kept "CLAUDE.md (the method's rules are current)"
+      !skip                  { print }' "$T/$RULES" > "$NEW"
+    if cmp -s "$T/$RULES" "$NEW"; then
+      did kept "$RULES (the method's rules are current)"
     else
-      mv "$T/CLAUDE.md.new" "$T/CLAUDE.md"
-      did replaced "the method's rules in CLAUDE.md, between their marks; every other line kept"
+      cat "$NEW" > "$T/$RULES"
+      did replaced "the method's rules in $RULES, between their marks; every other line kept"
     fi
-    rm -f "$BLOCK"
+    rm -f "$BLOCK" "$NEW"
   else
-    did kept "CLAUDE.md"
+    did kept "$RULES"
   fi
 else
-  { printf '\n## The design, and how a change lands\n\n'; fill "$H/templates/$CLAUDE_TEMPLATE" | sed '1,2d'; } >> "$T/CLAUDE.md"
-  did added "the method's rules, at the end of CLAUDE.md"
+  { printf '\n## The design, and how a change lands\n\n'; fill "$H/templates/$CLAUDE_TEMPLATE" | sed '1,2d'; } >> "$T/$RULES"
+  did added "the method's rules, at the end of $RULES$BECAUSE"
 fi
 
 # --------------------------------------------------------------------------
@@ -199,9 +218,8 @@ if [ "$CI" -eq 1 ]; then
     if [ -n "$ROOT" ]; then
       # Where the root's map lists a contracts repository, the checker reads
       # there what this one must serve, so CI checks it out too.
-      WHERE="$(go -C "$H" run ./cmd/reverse where -root "$T" 2>/dev/null || true)"
-      CPATH="$(printf '%s\n' "$WHERE" | sed -n 's/^contracts_path=//p')"
-      CREPO="$(printf '%s\n' "$WHERE" | sed -n 's/^contracts_remote=//p' | sed -n -e 's#\.git$##' -e 's#^.*github\.com[:/]##p')"
+      CPATH="$(where contracts_path)"
+      CREPO="$(where contracts_remote | sed -n -e 's#\.git$##' -e 's#^.*github\.com[:/]##p')"
       STEP="$(mktemp)"
       if [ -n "$CPATH" ] && [ -n "$CREPO" ]; then
         printf '\n      - name: the contracts repository, beside this one\n        uses: actions/checkout@v4\n        with:\n          repository: %s\n          path: %s\n' "$CREPO" "$CPATH" > "$STEP"

@@ -216,8 +216,9 @@ every name in the frontmatter's `tests:`.
 
 ## The project's rules
 
-The second part of your reply goes into `CLAUDE.md`, under a heading that is already
-there, as the part that is this project's own. Read the existing `CLAUDE.md`, `AGENTS.md`
+The second part of your reply goes into the file that holds this repository's standing
+instructions for an agent, `CLAUDE.md`, or `AGENTS.md` where `CLAUDE.md` only points at
+it, under a heading that is already there, as the part that is this project's own. Read the existing `CLAUDE.md`, `AGENTS.md`
 or other agent instructions if the survey lists any, and carry over what is still true.
 Write only what an agent would get wrong here without being told:
 

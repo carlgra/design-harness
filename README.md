@@ -174,6 +174,10 @@ section is still a question, the first change note, the method's rules in `CLAUD
 (after whatever is already there), a CI workflow, and the git hooks. It overwrites nothing
 and commits nothing. When it finishes, the checker passes.
 
+The rules go where the project's instructions for an agent live. Where `CLAUDE.md` is a
+link to `AGENTS.md`, or holds only an `@AGENTS.md` import, they are added to `AGENTS.md`,
+and bootstrap says so.
+
 Then, in the project:
 
 ```
@@ -273,8 +277,8 @@ design-harness/bootstrap --update /path/to/your/project
 ```
 
 replaces the project's `harness/` with this one and keeps its settings, and rewrites the
-method's rules in its `CLAUDE.md`, between their two marks, leaving every other line of
-that file alone. In a repository nested under a root it refreshes the rules only; the
+method's rules in its `CLAUDE.md`, or its `AGENTS.md` if that is where they are, between
+their two marks, leaving every other line of that file alone. In a repository nested under a root it refreshes the rules only; the
 harness is updated at the root. The harness is
 part of the project once copied: change it there if you need to, through the same door as
 everything else.

@@ -31,6 +31,7 @@ memory too.
 ```
 README.md            what this is and why it exists
 CLAUDE.md            how an agent works here: the rules, and the project's own
+                     (in AGENTS.md, where CLAUDE.md only points at it)
 design/DESIGN.md     the design, with its frontmatter
 design/spines/       in a large repository: one document per area of the code, its spine
 design/changes/      one short note per change: problem, plan, alternatives, files
@@ -254,7 +255,7 @@ A repository that existed before the method has a design; it is only not written
 |---|---|---|
 | `reverse survey` | Lists what a machine can see: the files and the globs that account for them, languages, test files and names, the command the repository proves itself with, the documents that may record decisions, CI, whether the history follows a commit convention. | Nothing. |
 | `reverse skeleton` | Writes `design/DESIGN.md` with frontmatter that accounts for every file as it stands, so the checker passes at once, and a body whose every section is a question. | Nothing: `validate:` and `commits:` are written as comments. |
-| `reverse draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
+| `reverse draft` | One session, able to read the repository and to write nothing, drafts the whole document and the project's own section of `CLAUDE.md`, or of `AGENTS.md` where `CLAUDE.md` only points at it. The command writes its reply to disk, and only over a skeleton. | Nothing: it proposes. |
 | a person | Reads every line. Answers each `(inferred)` and each `TODO(design)`. Switches on `validate:`. | Everything. |
 
 `reverse prompt` prints what the drafting session is handed, to give to an agent of your
