@@ -14,6 +14,7 @@ tests:
   - TestEveryFileIsAccountedForOrRefused
   - TestANamedTestMustExist
   - TestAnIdIsDefinedOnceAndEveryCitationLands
+  - TestACitationWithoutTheSlashIsToldTheFormToUse
   - TestADesignNoteCarriesItsParts
   - TestADesignSaysWhatItsNotesCarry
   - TestAnUnfinishedDesignIsSaidToBeUnfinished
@@ -183,7 +184,15 @@ The parts, all under `harness/`:
   "The" aside, so `## The problem` is the section `Problem`. A decision is defined by a heading that opens with its id, `### ADR-0007 — …`; an
   invariant by a list item or heading that opens with its id, `- **INV-012** — …`;
   any other appearance is a citation, and one written `other-repository/ADR-0007` is
-  that repository's and is not looked up. Then the checker runs `validate:`. It also
+  that repository's and is not looked up. The slash is the only form: the name, a
+  slash and the id, with nothing between. An id written after a name with a space,
+  `billing ADR-0007`, is a bare id, this document's own, and is refused when the
+  document does not define it. Every such refusal says how another repository's id is
+  cited. Where the word before the id is a name a citation could be qualified by, the
+  root's, a repository's on the root's map or on this design's own, or an area's, the
+  refusal names the citation it expects, `billing/ADR-0007`; the word is found through
+  a space, backticks, emphasis and a possessive. The document's own name before an id
+  is no such word. Then the checker runs `validate:`. It also
   counts the places the document still says `TODO(design)` outside backticks, the
   mark a draft leaves for a person, and reports the count without failing.
 - `cmd/coldread` puts two questions, comprehension and readiness, each to its own
@@ -564,8 +573,10 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   design accounts for. *(`test: TestANamedTestMustExist`)*
 - **INV-003** — A decision or invariant id is defined once in a document, the design or
   a spine, and every id it cites as its own is defined in it; another repository's,
-  qualified by its name, is not this document's to define.
-  *(`test: TestAnIdIsDefinedOnceAndEveryCitationLands`)*
+  qualified by its name, is not this document's to define. Qualified means the name, a
+  slash and the id; an id after a name and a space is the document's own.
+  *(`test: TestAnIdIsDefinedOnceAndEveryCitationLands`, `test:
+  TestACitationWithoutTheSlashIsToldTheFormToUse`)*
 - **INV-004** — A change note dated from the frontmatter's `notes: from:` carries every
   section the frontmatter asks of a note, each with something under it; a note dated before
   is never reread. *(`test: TestADesignNoteCarriesItsParts`,
@@ -968,6 +979,10 @@ design.
 - **Have bootstrap edit the root's design and `.gitignore`** to add the new repository.
   They are the root's, changed through the root's own pull request; bootstrap prints
   what to add.
+- **Read a name and an id with a space between, `billing ADR-0007`, as a citation of
+  that repository.** Two forms for one thing, and a sentence that ends in a repository's
+  name before an id of this design's own would be read as another's. The slash is the
+  one form, and the refusal of an id that lands nowhere says so.
 
 ### ADR-0008 — A change starts with a note in four parts, from a date
 
@@ -1190,6 +1205,7 @@ Paths a fault would travel, and the test that walks each:
 - a source file the design does not account for is refused — `TestEveryFileIsAccountedForOrRefused`
 - a test the design names that does not exist is refused — `TestANamedTestMustExist`
 - an id defined twice, or cited and defined nowhere, is refused — `TestAnIdIsDefinedOnceAndEveryCitationLands`
+- another repository's id written without the slash is refused with nothing to say what form was wanted — `TestACitationWithoutTheSlashIsToldTheFormToUse`
 - a note without one of its parts is refused, and an old note is not reread — `TestADesignNoteCarriesItsParts`
 - a section a repository adds to its notes is required from its date — `TestADesignSaysWhatItsNotesCarry`
 - an unfinished design is reported and not refused — `TestAnUnfinishedDesignIsSaidToBeUnfinished`

@@ -82,6 +82,8 @@ How it is written:
 - **Ids are kept for life.** A decision is `ADR-0007`, an invariant `INV-012`, and each
   keeps its number however much its text changes, so that a citation always lands. A
   retired id is never reused. Another repository's is cited by name: `platform/ADR-0029`.
+  The form is the name, a slash and the id, with nothing between: `platform ADR-0029`,
+  with a space, is read as this design's own id, and refused if it defines none.
 - **A decision states a constraint, never a value.** Where it depends on a number or a
   string, it says what the value must satisfy and names the file the value lives in.
   Tuning the value is then a code change, and the design does not go stale.
