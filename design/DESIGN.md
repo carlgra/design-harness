@@ -36,6 +36,7 @@ tests:
   - TestARepositoryUnderARootUsesTheRootsHarnessAndRules
   - TestTheMapIsBroughtInLineWithoutMerging
   - TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects
+  - TestAnUpdateReplacesAnEarlierHarnessAndSaysWhatAnUpdateLeavesToDo
   - TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive
   - TestTheRulesFileIsTheOneThatHoldsTheInstructions
   - TestTheWorkflowRunsWhereTheRepositorysWorkflowsRun
@@ -477,7 +478,13 @@ root's found on disk is not looked up.
 that exists, and says which file that is when it is not `CLAUDE.md`, the CI workflow, then the skeleton and the first note, then installs the
 hooks, and runs the checker. Each of those is skipped when the thing is already there,
 and a `harness/` directory that is not this harness stops it before anything is
-written. The CI workflow is written from a template whose one job runs on
+written. A `harness/` is this harness when it holds `FRAMEWORK.md`. It is an earlier
+form of this harness when it does not, and holds `cmd/check/`, `go.mod` and
+`safe-push`: `--update` replaces that as it replaces a current one, and without
+`--update` bootstrap stops and says to run it with `--update`, since the templates and
+commands the other steps need are not in an earlier form. Anything else called
+`harness/` is the project's own directory, and neither form of the command writes to
+it. The CI workflow is written from a template whose one job runs on
 `ubuntu-latest`. Where the repository's own workflows all run on one other runner,
 bootstrap writes that runner in its place and says so. Where they give no one runner,
 it leaves the template's and prints that `runs-on:` is a line to check, with what the
@@ -491,6 +498,15 @@ repository nested under a root there is no harness to swap, so `--update` there
 rewrites the rules alone, from the root's templates. A change a project made to its
 own copy is lost from the working tree by that and shows in `git diff`, where the
 person updating decides what to keep.
+
+What bootstrap prints last depends on what it did. After adopting, it is the steps to a
+design: draft, read, cold read, commit. After `--update` it is what an update leaves:
+read the diff, run the checker, commit; none of the steps to a design, since the
+project has one. A design may name tests that live in the harness. Before `--update`
+swaps the harness it lists the Go tests the old one holds, and afterwards prints each
+that the new one does not hold and `design/DESIGN.md` mentions, so that a person knows
+which names the checker is about to refuse and why. The checker, run at the end as
+always, refuses them in its own words; bootstrap still finishes.
 
 Run on a repository under a root, `bootstrap` adopts it as nested: it copies no
 harness; writes `CLAUDE.md` from `templates/CLAUDE.nested.md`, which names the path to
@@ -588,6 +604,7 @@ root needs is named in the workflow's comment and set by a person. A root is boo
   their marks in the rules file; and nothing else.
   *(`test: TestBootstrappingAnExistingProjectLeavesItPassingAndOverwritesNothing`,
   `test: TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`, `test:
+  TestAnUpdateReplacesAnEarlierHarnessAndSaysWhatAnUpdateLeavesToDo`, `test:
   TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive`, `test:
   TestTheRulesFileIsTheOneThatHoldsTheInstructions`)*
 - **INV-010** — A design that still says `TODO(design)` is reported as unfinished on
@@ -817,7 +834,8 @@ needs GitHub's `gh`, so does reading the server's protection where the frontmatt
 it (ADR-0011), and the cold read and the drafting session need the `claude`
 command-line tool. The scripts set `GOWORK=off` so that
 a project's own Go workspace does not claim the module. Updating is running
-`bootstrap --update`, which replaces the copy and keeps the project's settings.
+`bootstrap --update`, which replaces the copy, an earlier form of this harness included,
+and keeps the project's settings.
 
 A copy because the hook that guards every push must work offline, from a fresh clone,
 at the version the project last reviewed; and because a project should be able to read
@@ -851,6 +869,8 @@ does not guess; it keeps the template's runner and says the line is one to check
   link the rules land in `AGENTS.md` without anyone having decided it.
 - **Write the rules to both files.** Two copies of one rule, and an agent that reads
   both through the import is handed them twice.
+- **A flag that replaces whatever is in `harness/`.** One mistyped path deletes a
+  directory of the project's own. An earlier harness is known by what it holds.
 - **Move a project's instructions into one file for it.** They are the project's;
   adopting overwrites nothing (INV-009).
 - **Copy the first `runs-on:` found, or the commonest.** Where workflows differ, either
@@ -1144,7 +1164,7 @@ No machine holds a design to it yet.
 | File | Purpose |
 |---|---|
 | `bootstrap` | Adopts the method in a project: copies `harness/`, then adds what is missing, where the project keeps such things, and overwrites nothing (INV-009). `--update` replaces a project's harness and keeps its settings. |
-| `harness/FRAMEWORK.md` | The method, written for whoever works in a project that uses it. Its presence is how `bootstrap` knows a `harness/` is this one. |
+| `harness/FRAMEWORK.md` | The method, written for whoever works in a project that uses it. Its presence is how `bootstrap` knows a `harness/` is this one in its current form. |
 | `harness/go.mod`, `harness/go.sum` | The harness's own module, `harness`, with one dependency (ADR-0005). |
 | `harness/internal/design/` | Reads the frontmatter and the spine of each area it defines (ADR-0013), walks the repository, finds the root and the harness, matches globs, recognises test files. |
 | `harness/internal/session/` | Starts a model session through the `claude` tool with exactly the tools it is given; reads a settings file. |
@@ -1212,6 +1232,7 @@ Paths a fault would travel, and the test that walks each:
 - a repository that has not asked has nothing read — `TestProtectionIsReadOnlyWhereTheDesignAsks`
 - a push is refused while the server's protection lacks something, where the design asks — `TestAPushIsRefusedWhileTheServersProtectionLacksSomething`
 - an update replaces the harness and the method's rules, and nothing that is the project's — `TestAnUpdateReplacesTheHarnessAndTheRulesAndNothingOfTheProjects`
+- an update refuses the harness it exists to replace, or tells a project with a design to draft one — `TestAnUpdateReplacesAnEarlierHarnessAndSaysWhatAnUpdateLeavesToDo`
 - the method's rules added to a `CLAUDE.md` that only points at `AGENTS.md` are read by one agent and no other — `TestTheMethodsRulesGoWhereTheRepositorysInstructionsLive`
 - a `CLAUDE.md` with rules of its own is taken for a pointer, or a pointer for rules — `TestTheRulesFileIsTheOneThatHoldsTheInstructions`
 - a CI workflow written for a runner the repository does not use, with nothing said — `TestTheWorkflowRunsWhereTheRepositorysWorkflowsRun`

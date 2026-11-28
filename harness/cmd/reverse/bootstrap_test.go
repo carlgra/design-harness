@@ -516,3 +516,104 @@ func TestTheWorkflowRunsWhereTheRepositorysWorkflowsRun(t *testing.T) {
 		t.Errorf("a repository with no workflow was told about a runner:\n%s", out)
 	}
 }
+
+// An update replaces an earlier form of this harness, one with the checker
+// and the push script and no FRAMEWORK.md, carrying its settings across from
+// their old names; says what an update leaves to do, and not what a first
+// adoption does; and names each test the design cites that went with the old
+// harness. Without --update the earlier harness stops bootstrap, which says
+// to use it. A harness/ that is not a harness is never replaced.
+func TestAnUpdateReplacesAnEarlierHarnessAndSaysWhatAnUpdateLeavesToDo(t *testing.T) {
+	script := theScript(t)
+	refused := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("sh", append([]string{script}, args...)...)
+		for _, kv := range os.Environ() {
+			if !strings.HasPrefix(kv, "GIT_") {
+				cmd.Env = append(cmd.Env, kv)
+			}
+		}
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("bootstrap %v was not refused:\n%s", args, out)
+		}
+		return string(out)
+	}
+
+	root := aProject(t, map[string]string{"README.md": "# shop\n"})
+	run(t, "sh", script, "--no-ci", "--no-hooks", root)
+	write := func(name, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The name of a test only the earlier harness held, put together here so
+	// that this file, which the update copies in, does not hold it.
+	const lost = "TestOnlyThe" + "EarlierHarnessHeld"
+	// The harness as it once was: no FRAMEWORK.md, its cold-read settings
+	// under the old name, and a test this harness does not hold, which the
+	// project's design names.
+	for _, gone := range []string{"harness/FRAMEWORK.md", "harness/coldread"} {
+		if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(gone))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("harness/goldfish/goldfish.yaml", "model: the-projects-own\nverdict: \"VERDICT:\"\n")
+	write("harness/cmd/check/earlier_test.go", "package main\n\nimport \"testing\"\n\nfunc "+lost+"(t *testing.T) {}\n")
+	doc := readIn(t, root, "design/DESIGN.md")
+	named := strings.Replace(strings.Replace(doc, "tests: []", "tests:\n  - "+lost, 1), SkeletonMark+"\n", "", 1)
+	if named == doc {
+		t.Fatalf("the fixture did not name the test:\n%s", doc)
+	}
+	write("design/DESIGN.md", named)
+
+	if out := refused(root); !strings.Contains(out, "an earlier form of this harness") || !strings.Contains(out, "--update") {
+		t.Errorf("an earlier harness met without --update was not sent to it:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "harness", "FRAMEWORK.md")); err == nil {
+		t.Fatal("the earlier harness was replaced without --update")
+	}
+
+	out := run(t, "sh", script, "--update", "--no-ci", "--no-hooks", root)
+	if _, err := os.Stat(filepath.Join(root, "harness", "FRAMEWORK.md")); err != nil {
+		t.Fatalf("an update did not replace the earlier harness:\n%s", out)
+	}
+	if !strings.Contains(readIn(t, root, "harness/coldread/coldread.yaml"), "the-projects-own") {
+		t.Error("the earlier harness's settings were not carried across")
+	}
+	if readIn(t, root, "design/DESIGN.md") != named {
+		t.Error("an update changed the project's design")
+	}
+	for _, not := range []string{"Draft the design from the code", "feat/adopt-the-design", "cmd/reverse draft"} {
+		if strings.Contains(out, not) {
+			t.Errorf("an update printed the advice for a first adoption, %q:\n%s", not, out)
+		}
+	}
+	for _, want := range []string{
+		"An update leaves three things to do",
+		"git diff",
+		"run ./cmd/check",
+		"design/DESIGN.md names the test " + lost, // the checker's own refusal
+		"this harness does not hold them:\n\n         " + lost + "\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("an update did not say %q:\n%s", want, out)
+		}
+	}
+
+	// A directory of the project's own that happens to be called harness.
+	other := aProject(t, map[string]string{"harness/notes.txt": "the project's own\n"})
+	for _, args := range [][]string{{other}, {"--update", other}} {
+		if out := refused(args...); !strings.Contains(out, "is not this harness") {
+			t.Errorf("bootstrap %v did not say what it found:\n%s", args, out)
+		}
+	}
+	if readIn(t, other, "harness/notes.txt") != "the project's own\n" {
+		t.Error("a directory that is not a harness was written to")
+	}
+}

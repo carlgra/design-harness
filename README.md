@@ -281,7 +281,10 @@ design-harness/bootstrap --update /path/to/your/project
 
 replaces the project's `harness/` with this one and keeps its settings, and rewrites the
 method's rules in its `CLAUDE.md`, or its `AGENTS.md` if that is where they are, between
-their two marks, leaving every other line of that file alone. In a repository nested under a root it refreshes the rules only; the
+their two marks, leaving every other line of that file alone. It replaces an earlier form of this harness the same way, and then
+prints what an update leaves to do: read the diff, run the checker, and expect it to
+name any test the design cites that this harness does not hold. In a repository nested
+under a root it refreshes the rules only; the
 harness is updated at the root. The harness is
 part of the project once copied: change it there if you need to, through the same door as
 everything else.

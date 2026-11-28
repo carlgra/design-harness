@@ -52,6 +52,12 @@ done
 
 die() { printf '\nbootstrap: %s\n' "$*" >&2; exit 1; }
 did() { printf '  %-9s %s\n' "$1" "$2"; }
+# The Go tests under a directory, by name, sorted.
+tests_in() {
+  find "$1" -name '*_test.go' -exec sed -n 's/^func \(Test[A-Za-z0-9_]*\)(.*/\1/p' {} + | sort -u
+}
+# Tests the design names that an update took away with the harness that held them.
+GONE=""
 
 [ -n "$TARGET" ] || die "name the project: ./bootstrap /path/to/project"
 [ -d "$TARGET" ] || die "$TARGET is not a directory"
@@ -105,9 +111,22 @@ else
   PARENT=""
   CLAUDE_TEMPLATE="CLAUDE.md"
   if [ -e "$T/harness" ]; then
-    [ -f "$T/harness/FRAMEWORK.md" ] || \
-      die "$T/harness exists and is not this harness. The harness lives in harness/ at the root; move what is there first."
+    # IS WHAT IS THERE THIS HARNESS? One that carries FRAMEWORK.md is. So is
+    # an earlier form of it, from before it carried the method written out:
+    # a Go module with the checker and the push script. That is the likeliest
+    # thing for --update to find, and --update replaces it. Anything else is
+    # the project's own directory, and nothing is written.
+    if [ ! -f "$T/harness/FRAMEWORK.md" ]; then
+      { [ -d "$T/harness/cmd/check" ] && [ -f "$T/harness/go.mod" ] && [ -f "$T/harness/safe-push" ]; } || \
+        die "$T/harness exists and is not this harness. The harness lives in harness/ at the root; move what is there first."
+      [ "$UPDATE" -eq 1 ] || \
+        die "$T/harness is an earlier form of this harness. Replace it with this one:  $0 --update $T"
+    fi
     if [ "$UPDATE" -eq 1 ]; then
+      # The tests the harness had, by name: a design names tests, and one it
+      # names from the harness may have another name in this one, or none.
+      HAD="$(mktemp)"; HAS="$(mktemp)"
+      tests_in "$T/harness" > "$HAD"
       # The settings are the project's own: its model.
       KEEP="$(mktemp -d)"
       for f in coldread/coldread.yaml reverse/reverse.yaml; do
@@ -130,6 +149,13 @@ else
       cp -R "$KEEP/." "$T/harness/"
       rm -rf "$KEEP"
       did replaced "harness/ (its settings kept)"
+      tests_in "$T/harness" > "$HAS"
+      if [ -f "$T/design/DESIGN.md" ]; then
+        for name in $(comm -23 "$HAD" "$HAS"); do
+          ! grep -qw "$name" "$T/design/DESIGN.md" || GONE="$GONE $name"
+        done
+      fi
+      rm -f "$HAD" "$HAS"
     else
       did kept "harness/ (--update replaces it with this one)"
     fi
@@ -282,6 +308,11 @@ go -C "$H" run ./cmd/check -root "$T" -validate=false || {
   echo
   echo "bootstrap: the checker does not pass yet. Each FAIL above is a file the design"
   echo "           does not account for, or a note without its parts: amend design/DESIGN.md."
+  [ "$UPDATE" -eq 0 ] || {
+    echo "           After an update, a FAIL that names a test is usually one the design cites"
+    echo "           from the harness it had, which this harness holds under another name or"
+    echo "           not at all."
+  }
 }
 [ ! -f "$T/go.work" ] || {
   echo
@@ -304,6 +335,51 @@ if [ -n "$ROOT" ]; then
   echo "     (kind is the root's own word for it: service, contracts, platform.)"
   echo
   echo "  2. Keep its files out of the root's history: add  /$SUB/  to .gitignore."
+fi
+
+# --------------------------------------------------------------------------
+# WHAT IS LEFT TO DO DEPENDS ON WHAT WAS DONE. A project that was updated has
+# a design; telling it to draft one is advice for somebody else.
+if [ "$UPDATE" -eq 1 ]; then
+  cat <<EOF
+
+bootstrap: done. Nothing is committed; read what changed with:  git -C $T status
+
+An update leaves three things to do, in $T:
+
+  1. Read the diff. A change this project made to its own copy of the
+     harness, or to the method's rules between their marks, is gone from the
+     working tree and shows there; put back what is still wanted.
+
+         git diff
+
+  2. Run the checker, and mend what it refuses:
+
+         go -C $HREL run ./cmd/check
+
+     A FAIL that names a test is usually one the design cites from the
+     harness it had, which this harness holds under another name or not at
+     all. Take it out of tests: in design/DESIGN.md, or name the test that
+     took its place.
+EOF
+  if [ -n "$GONE" ]; then
+    echo
+    echo "     The harness that was here held these, the design names them, and"
+    echo "     this harness does not hold them:"
+    echo
+    for name in $GONE; do echo "         $name"; done
+  fi
+  cat <<EOF
+
+  3. Commit on a branch and push through the one door:
+
+         git checkout -b fix/update-the-harness
+         git add -A && git commit -m "chore(harness): the harness is updated"
+         $HREL/safe-push
+
+The method itself is in $HREL/FRAMEWORK.md.
+EOF
+  exit 0
 fi
 
 cat <<EOF
